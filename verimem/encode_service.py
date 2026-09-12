@@ -317,9 +317,16 @@ class EncodeServer:
             # finestra del modello. Lo fa il daemon perche' il tokenizzatore
             # ce l'ha gia' caricato: farlo nel server costava 1292 MB e 31,7 s
             # a chi poi delegava comunque il giudizio (misurato 2026-09-12).
-            # Best-effort come tutto il resto: se la riduzione non riesce, si
-            # giudica lo span intero e il modello tronca da se', che e'
-            # esattamente il comportamento di prima.
+            # Se la riduzione non riesce si giudica lo span intero e il
+            # modello tronca da se'. ⚠️ E NON E' «il comportamento di prima»,
+            # come diceva questa riga: PRIMA la riduzione la faceva il client
+            # prima di mandare, quindi il modello non troncava mai. Se questo
+            # ripiego scatta si torna alla perdita che `_entro_la_finestra`
+            # esiste per rendere leggibile — il 42% dello span buttato DALLA
+            # CODA, dopo che il selettore l'aveva scelto. Percio' il ripiego
+            # resta (mai far cadere un giudizio) ma NON E' PIU' MUTO: lo dice
+            # nella risposta, e chi l'ha chiesto lo sente.
+            _finestra_non_applicata: str | None = None
             if req.get("max_length"):
                 try:
                     from .local_grounding import get_local_judge
@@ -338,8 +345,13 @@ class EncodeServer:
                         [_giudice._entro_la_finestra(str(p[0]), _finestra),
                          str(p[1])]
                         for p in req["gate_pairs"]]
-                except Exception:  # noqa: BLE001 — mai far cadere un giudizio
-                    pass
+                except Exception as exc:  # noqa: BLE001 — mai far cadere un giudizio
+                    # Il fail-open resta, il silenzio no. Un `except` muto qui
+                    # nasconde due cose diverse - una firma sbagliata e un
+                    # tokenizzatore assente - e in tutt'e due i casi il verdetto
+                    # esce da uno span troncato dalla coda senza che nessuno lo
+                    # sappia.
+                    _finestra_non_applicata = f"{type(exc).__name__}: {exc}"
             # Il GIUDICE DEL MOAT, che e' un modello diverso dal reranker. Qui
             # non si guadagna solo latenza: finche' viveva nel processo che
             # scrive, le scritture che arrivavano durante il warm venivano
@@ -349,8 +361,15 @@ class EncodeServer:
             if self._gate_fn is None:
                 return {"ok": False, "error": "this daemon cannot judge"}
             coppie = [(str(p[0]), str(p[1])) for p in req["gate_pairs"]]
-            return {"ok": True,
-                    "scores": [float(s) for s in self._gate_fn(coppie)]}
+            risposta = {"ok": True,
+                        "scores": [float(s) for s in self._gate_fn(coppie)]}
+            if _finestra_non_applicata is not None:
+                # Chi ha chiesto la riduzione deve sapere che non c'e' stata:
+                # il punteggio e' valido ma calcolato su uno span troncato
+                # dalla coda, che e' un'altra cosa.
+                risposta["window_applied"] = False
+                risposta["window_error"] = _finestra_non_applicata
+            return risposta
         return {"ok": False,
                 "error": "request must contain 'text', 'texts', "
                          "'rerank_pairs', 'gate_pairs', or 'ping'"}

@@ -861,6 +861,11 @@ def _delegate_only() -> bool:
 _GATE_DELEGATO = {"ok": False}
 
 
+#: Gia' avvisato in questo processo che il daemon ha giudicato su uno span
+#: non ridotto: si dice UNA volta, non a ogni scrittura.
+_avvisato_finestra_non_applicata = False
+
+
 def _gate_via_daemon(pairs, *, info=None,
                      max_length: int | None = None) -> list[float] | None:
     """Punteggi del giudice del moat dal daemon condiviso, o None per degradare.
@@ -918,6 +923,23 @@ def _gate_via_daemon(pairs, *, info=None,
         # in cui client e daemon non ripartono nello stesso istante.
         if resp and resp.get("ok") and isinstance(resp.get("scores"), list):
             _GATE_DELEGATO["ok"] = True
+            if resp.get("window_applied") is False:
+                # IL RIPIEGO NON E' MUTO. Il punteggio e' valido, ma e' stato
+                # calcolato su uno span che NESSUNO ha ridotto: il modello lo
+                # tronca dalla coda, cioe' proprio la perdita che la riduzione
+                # esiste per evitare. Si dice una volta per processo, non a
+                # ogni scrittura, perche' un avviso a ogni giro diventa rumore
+                # e il rumore non lo legge nessuno.
+                global _avvisato_finestra_non_applicata
+                if not _avvisato_finestra_non_applicata:
+                    _avvisato_finestra_non_applicata = True
+                    import warnings
+                    warnings.warn(
+                        "il daemon ha giudicato su uno span NON ridotto alla "
+                        "finestra del modello: il punteggio vale, ma la coda "
+                        "dello span e' stata troncata dal modello invece che "
+                        f"scelta. Motivo dal daemon: {resp.get('window_error')}",
+                        RuntimeWarning, stacklevel=2)
             return [float(s) for s in resp["scores"]]
     except Exception:  # noqa: BLE001 — qualunque intoppo -> si degrada come prima
         return None

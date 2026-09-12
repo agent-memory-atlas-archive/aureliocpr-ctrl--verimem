@@ -297,3 +297,85 @@ def test_due_richieste_insieme_con_budget_diversi_non_si_rubano_la_finestra(
         f"rubate la finestra. Lunghezze viste: {sorted(visti)}")
     assert giudice.scritture_di_max_length == [], (
         f"scritture sullo stato condiviso: {giudice.scritture_di_max_length}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# IL RIPIEGO RESTA, IL SILENZIO NO
+#
+# Rilievo in revisione, 2026-09-12: il `except ... : pass` che copre la
+# riduzione prometteva, nel commento sopra, «il comportamento di prima». Non lo
+# e': PRIMA la riduzione la faceva il client prima di mandare, e il modello non
+# troncava mai. Se il ripiego scatta si torna al troncamento DALLA CODA — il
+# 42% dello span buttato dopo che il selettore l'aveva scelto — e nessuno lo sa.
+# Il fail-open si tiene: un giudizio che cade sarebbe peggio. Il silenzio no.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_se_la_riduzione_fallisce_il_daemon_lo_DICE_e_giudica_lo_stesso() -> None:
+    """Due cose insieme, e servono entrambe: il verdetto esce (fail-open) e la
+    risposta dichiara che lo span non e' stato ridotto (non muto)."""
+
+    class _GiudiceRotto:
+        max_length = 8
+
+        def _entro_la_finestra(self, span, max_length=None):
+            raise RuntimeError("tokenizzatore assente")
+
+    import verimem.local_grounding as lg
+    originale = lg.get_local_judge
+    lg.get_local_judge = _GiudiceRotto
+    try:
+        server = object.__new__(encode_service.EncodeServer)
+        server._token = "t"
+        server._gate_fn = lambda coppie: [77.0] * len(coppie)
+
+        resp = server._handle_request({
+            "token": "t",
+            "gate_pairs": [["uno span lungo\ne un altro pezzo", "un fatto"]],
+            "max_length": 8,
+        })
+    finally:
+        lg.get_local_judge = originale
+
+    assert resp["ok"] and resp["scores"] == [77.0], (
+        "il giudizio e' caduto: il ripiego deve restare aperto, un verdetto "
+        "mancante e' peggio di uno span non ridotto")
+    assert resp.get("window_applied") is False, (
+        "la risposta NON dice che la riduzione non e' avvenuta: il punteggio "
+        "arriva da uno span troncato dalla coda e chi lo riceve non lo sa")
+    assert "RuntimeError" in str(resp.get("window_error", "")), (
+        f"il motivo non e' arrivato: {resp.get('window_error')!r}. Senza, chi "
+        "legge sa che qualcosa non ha funzionato ma non che cosa")
+
+
+def test_quando_la_riduzione_riesce_la_risposta_non_si_sporca() -> None:
+    """L'altra gamba: il campo compare SOLO quando serve.
+
+    Un campo sempre presente diventa rumore e smette di essere letto — e un
+    criterio che non distingue i due casi non e' un criterio.
+    """
+    class _GiudiceOk:
+        max_length = 8
+
+        def _entro_la_finestra(self, span, max_length=None):
+            return span.splitlines()[0]
+
+    import verimem.local_grounding as lg
+    originale = lg.get_local_judge
+    lg.get_local_judge = _GiudiceOk
+    try:
+        server = object.__new__(encode_service.EncodeServer)
+        server._token = "t"
+        server._gate_fn = lambda coppie: [1.0] * len(coppie)
+        resp = server._handle_request({
+            "token": "t",
+            "gate_pairs": [["riga uno\nriga due", "un fatto"]],
+            "max_length": 8,
+        })
+    finally:
+        lg.get_local_judge = originale
+
+    assert resp["ok"]
+    assert "window_applied" not in resp, (
+        "la risposta dichiara un problema che non c'e' stato: il campo deve "
+        "comparire solo quando la riduzione e' saltata")
