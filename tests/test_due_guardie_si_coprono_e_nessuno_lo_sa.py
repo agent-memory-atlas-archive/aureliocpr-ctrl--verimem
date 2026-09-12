@@ -214,13 +214,18 @@ def _ritiri(seconda: str) -> tuple[int, str, str]:
     finally:
         conn.close()
 
-    # ⚠️ `quarantined_by` NON BASTA, ed e' il campo che ha gia' ingannato
-    # qualcuno: nel caso riprodotto in `client.py` il moat APPROVA a 99.89, a
-    # fermare e' `L4.1`, e la colonna scrive il generico `'gate'` — tanto che
-    # il giorno dopo una lettura in buona fede concluse «non e' L4». Chi decide
-    # sta nei WARNING della stessa ricevuta, che portano il `layer`. Si
-    # stampano tutti e tre: se l'etichetta generica e il layer non coincidono,
-    # la differenza e' essa stessa il reperto.
+    # PERCHE' SI STAMPANO TUTTI E TRE, e non solo `quarantined_by`.
+    # Nel caso riprodotto in `client.py` quella colonna scriveva il generico
+    # `'gate'` mentre a fermare era `L4.1`, e il giorno dopo una lettura in
+    # buona fede concluse «non e' L4»: un'etichetta generica si legge come
+    # un'assenza.
+    # ✅ MISURATO POI, in una caduta vera di questa cella (2026-09-12, gamba
+    # ubuntu py3.12): DA QUESTA PORTA il campo il layer lo NOMINA —
+    # `quarantined_by` valeva `'L4.1'` sia nella ricevuta sia nel DB, con
+    # `layers=['L4.1']` e `grounding_score=99.948`. ⇒ Il campo non e' generico
+    # sempre: lo diventa dove chi chiama non gli passa i layer agiti. Le tre
+    # righe restano perche' e' proprio una DIFFERENZA fra loro a dire da quale
+    # porta si sta guardando — e quella differenza e' essa stessa un reperto.
     strati = [str(w.get("layer", "?"))
               for w in (ricevuta.get("warnings") or []) if isinstance(w, dict)]
     assert stato in ("model_claim", "user_manual"), (
@@ -228,7 +233,7 @@ def _ritiri(seconda: str) -> tuple[int, str, str]:
         f"{stato!r}, quindi non c'era niente che potesse ritirare il primo.\n"
         f"    layer dei warning         = {strati!r}   <- CHI DECIDE\n"
         f"    quarantined_by (ricevuta) = "
-        f"{(ricevuta.get('quarantined_by') or '')!r}   <- etichetta generica\n"
+        f"{(ricevuta.get('quarantined_by') or '')!r}   <- generico su ALCUNE porte\n"
         f"    quarantined_by (nel DB)   = {nel_db!r}\n"
         f"    grounding_score           = "
         f"{ricevuta.get('grounding_score')!r}   <- puo' essere ALTO e la "
