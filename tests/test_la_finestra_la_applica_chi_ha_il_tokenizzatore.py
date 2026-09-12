@@ -386,3 +386,88 @@ def test_quando_la_riduzione_riesce_la_risposta_non_si_sporca() -> None:
     assert "window_applied" not in resp, (
         "la risposta dichiara un problema che non c'e' stato: il campo deve "
         "comparire solo quando la riduzione e' saltata")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LA RICEVUTA DICE CHI HA GIUDICATO
+#
+# Dal 2026-09-12 il punteggio del moat puo' arrivare da due posti — il daemon
+# condiviso o il modello caricato nel processo — con costi, latenze e modalita'
+# di guasto diverse. La ricevuta li mostrava identici: un 99,6 dal daemon e un
+# 99,6 in casa si leggevano uguali, e non lo sono.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_chi_ha_giudicato_si_registra_per_THREAD_non_per_processo() -> None:
+    """⚠️ LA GAMBA CHE CONTA, ed e' la lezione che questa PR ha gia' pagato una
+    volta: il server serve una connessione per thread. Se l'esecutore stesse in
+    una variabile di modulo, una scrittura leggerebbe l'esecutore di un'altra —
+    e la ricevuta direbbe una cosa falsa su una cosa verificabile.
+
+    Qui due thread registrano esecutori diversi e ciascuno rilegge il PROPRIO.
+    Senza il thread-local il secondo troverebbe il valore del primo.
+    """
+    import threading
+
+    from verimem import local_grounding as lg
+
+    letti: dict[str, str | None] = {}
+    pronti = threading.Barrier(2, timeout=10)
+
+    def _uno(nome: str) -> None:
+        lg._registra_esecutore(nome)
+        pronti.wait()                     # tutti e due hanno scritto: ora si legge
+        letti[nome] = lg.esecutore_dell_ultimo_giudizio()
+
+    t = [threading.Thread(target=_uno, args=(n,)) for n in ("daemon", "in-process")]
+    for x in t:
+        x.start()
+    for x in t:
+        x.join(timeout=15)
+
+    assert letti == {"daemon": "daemon", "in-process": "in-process"}, (
+        f"un thread ha letto l'esecutore di un altro: {letti}. La ricevuta "
+        "direbbe che ha giudicato il daemon quando ha giudicato il processo, "
+        "o viceversa")
+
+
+def test_quando_nessuno_giudica_il_campo_non_c_e(monkeypatch) -> None:
+    """L'altra gamba: assente e' diverso da «giudicato», e la ricevuta non deve
+    inventare un esecutore per un giudizio che non c'e' stato."""
+    from verimem import local_grounding as lg
+
+    monkeypatch.setattr(lg, "_delegate_only", lambda: True)
+    monkeypatch.setattr(
+        lg, "_gate_via_daemon", lambda pairs, *, info=None, max_length=None: None)
+    monkeypatch.setattr(lg, "warm_local_judge_async", lambda: None)
+    monkeypatch.setattr(
+        encode_service, "read_discovery", lambda *a, **k: {"port": 1})
+
+    giudice = _GiudiceFinto()
+    monkeypatch.setattr(lg, "get_local_judge", lambda: giudice)
+    lg._registra_esecutore("in-process")          # sporco apposta lo stato
+
+    assert lg.try_local_score("una fonte", "un fatto") is None
+    assert lg.esecutore_dell_ultimo_giudizio() is None, (
+        "dopo un giudizio NON avvenuto il registro tiene ancora l'esecutore "
+        "precedente: la ricevuta attribuirebbe a qualcuno un verdetto che non "
+        "e' stato dato")
+
+
+def test_il_daemon_che_risponde_si_registra_come_daemon(monkeypatch) -> None:
+    """Il caso normale del server: giudica il daemon e la ricevuta lo dira'."""
+    from verimem import local_grounding as lg
+
+    monkeypatch.setattr(lg, "_delegate_only", lambda: True)
+    monkeypatch.setattr(
+        lg, "_gate_via_daemon", lambda pairs, *, info=None, max_length=None: [7.0])
+    monkeypatch.setattr(
+        encode_service, "read_discovery", lambda *a, **k: {"port": 1})
+
+    giudice = _GiudiceFinto()
+    monkeypatch.setattr(lg, "get_local_judge", lambda: giudice)
+    lg._registra_esecutore(None)
+
+    r = lg.try_local_score("una fonte", "un fatto")
+    assert r is not None and r[0] == 7.0
+    assert lg.esecutore_dell_ultimo_giudizio() == "daemon"

@@ -865,6 +865,33 @@ _GATE_DELEGATO = {"ok": False}
 #: non ridotto: si dice UNA volta, non a ogni scrittura.
 _avvisato_finestra_non_applicata = False
 
+#: CHI ha giudicato l'ultima scrittura DI QUESTO THREAD.
+#:
+#: ⚠️ THREAD-LOCAL, e non e' un dettaglio: il server serve una connessione per
+#: thread, e una variabile di modulo direbbe a una scrittura chi ha giudicato
+#: quella di un altro. E' la stessa forma che in questa PR aveva gia' morso una
+#: volta (il budget della finestra passato per attributo condiviso): un dato che
+#: appartiene a UNA richiesta non si tiene in un posto che sta a tutte.
+#:
+#: `_GATE_DELEGATO` non serve a questo: dice che in QUESTO PROCESSO il daemon ha
+#: risposto almeno una volta, che e' una domanda diversa e resta vera per sempre.
+_esecutore = threading.local()
+
+
+def esecutore_dell_ultimo_giudizio() -> str | None:
+    """``"daemon"``, ``"in-process"``, oppure ``None`` se nessuno ha giudicato.
+
+    Serve alla ricevuta: dal 2026-09-12 il punteggio puo' arrivare da due posti,
+    e chi legge una ricevuta deve poter distinguere «giudicato dal servizio
+    condiviso» da «giudicato qui» — sono due cose con costi, latenze e modalita'
+    di guasto diverse, e finora la ricevuta le mostrava identiche.
+    """
+    return getattr(_esecutore, "chi", None)
+
+
+def _registra_esecutore(chi: str | None) -> None:
+    _esecutore.chi = chi
+
 
 def _gate_via_daemon(pairs, *, info=None,
                      max_length: int | None = None) -> list[float] | None:
@@ -1025,7 +1052,9 @@ def try_local_score(source: str, fact: str, *,
             info=info,
             max_length=judge.max_length if il_daemon_riduce else None)
         if punteggi:
+            _registra_esecutore("daemon")
             return judge.normalizza(punteggi[0]), judge.threshold
+        _registra_esecutore(None)
         warm_local_judge_async()
         return None
     # LOAD phase — a missing / unloadable model is a legitimate "no local judge":
@@ -1034,6 +1063,7 @@ def try_local_score(source: str, fact: str, *,
     try:
         judge._ensure_scorer()
     except Exception:  # noqa: BLE001 — model absent/unloadable -> fail over
+        _registra_esecutore(None)
         if not _warned_fallback:
             _warned_fallback = True
             import warnings
@@ -1047,13 +1077,15 @@ def try_local_score(source: str, fact: str, *,
     # laundering it into "no judge -> admit" (opus re-review 2026-07-18, finding B:
     # this is the default out-of-the-box path, where the earlier fix did not reach).
     score = judge.score(source, fact, focus_budget=focus_budget)
+    _registra_esecutore("in-process")
     return score, judge.threshold
 
 
 __all__ = ["LocalGroundingJudge", "make_finetuned_scorer", "get_local_judge",
            "set_local_judge", "reset_local_judge", "get_local_threshold",
            "try_local_score", "local_ce_available", "warm_local_judge_async",
-           "judge_state", "_gate_via_daemon", "daemon_del_giudice_annunciato",
+           "judge_state", "esecutore_dell_ultimo_giudizio",
+           "_gate_via_daemon", "daemon_del_giudice_annunciato",
            "ensure_gate_model", "DEFAULT_GATE_MODEL_URL",
            "DEFAULT_GATE_MODEL_SHA256", "DEFAULT_GATE_MODEL_HUB_ID",
            "DEFAULT_MODEL_DIR"]
