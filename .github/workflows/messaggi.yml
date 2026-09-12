@@ -155,6 +155,24 @@ jobs:
       # `| tail -3` e il caso sporco diceva ROSSO con EXIT=0, perche' l'uscita
       # della pipe sostituisce quella del comando. E' la trappola contro cui
       # avvisa il nostro stesso strumento, e ci sono cascato provandone una.
+      - name: Il corpo di questa PR
+        if: github.event_name == 'pull_request'
+        # ⚠️ IL CORPO ARRIVA PER `env`, NON INTERPOLATO NELLO SCRIPT.
+        # `${{ github.event.pull_request.body }}` dentro un `run:` verrebbe
+        # sostituito PRIMA che la shell parta: un corpo che contiene
+        # `$(...)`, un apice o un `;` eseguirebbe quello che vuole sul runner,
+        # e chiunque puo' aprire una richiesta. Per `env` il corpo resta un
+        # DATO, e python lo legge dall'ambiente senza che la shell lo guardi.
+        env:
+          CORPO: ${{ github.event.pull_request.body }}
+        run: |
+          python - <<'PY'
+          import os, pathlib
+          pathlib.Path("corpo_della_richiesta.txt").write_text(
+              os.environ.get("CORPO", ""), encoding="utf-8")
+          PY
+          python scripts/messaggio_pulito.py --corpo corpo_della_richiesta.txt
+
       - name: I messaggi appena arrivati su main
         if: github.event_name == 'push'
         run: |

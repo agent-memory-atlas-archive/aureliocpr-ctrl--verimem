@@ -38,6 +38,7 @@ import pytest
 
 RADICE = Path(__file__).resolve().parents[1]
 SCRIPT = RADICE / "scripts" / "messaggio_pulito.py"
+WORKFLOW = RADICE / ".github" / "workflows" / "messaggi.yml"
 ELENCO = RADICE / "scripts" / "nomi_delle_sessioni.py"
 HOOK = RADICE / ".githooks" / "commit-msg"
 
@@ -385,3 +386,51 @@ def test_una_riga_del_corpo_travestita_da_trailer_non_sfugge(repo: Path) -> None
     assert esito.returncode == 1, f"la riga travestita e' sfuggita:\n{esito.stdout}"
     assert "percorso locale" in esito.stdout
     assert "nome di sessione" in esito.stdout
+
+
+def test_il_corpo_della_richiesta_e_giudicato_dallo_stesso_controllo() -> None:
+    """Il criterio del corpo vive nello stesso file delle altre regole.
+
+    Se un giorno qualcuno lo spostasse in uno script suo, i nomi e i percorsi
+    verrebbero cercati da due liste che divergono — e questo progetto l'ha gia'
+    pagato con l'elenco dei nomi in quattro posti con tre contenuti.
+    """
+    esito = _esegui("--autotest")
+    assert esito.returncode == 0, esito.stdout + esito.stderr
+    assert "corpo:" in esito.stdout, (
+        "l'autotest non nomina i casi del corpo: girano da un posto in meno\n"
+        + esito.stdout)
+
+
+def test_il_corpo_arriva_per_ENV_e_non_interpolato_nello_script() -> None:
+    """⚠️ IL PRESIDIO CONTRO UNA «SEMPLIFICAZIONE» CHE APRE IL RUNNER.
+
+    Scrivere `${{ github.event.pull_request.body }}` dentro un `run:` e' piu'
+    corto e sembra identico. Non lo e': l'espressione viene sostituita PRIMA
+    che la shell parta, quindi un corpo che contiene `$(...)`, un apice o un
+    `;` esegue quello che vuole sul runner — e chiunque puo' aprire una
+    richiesta. Per `env` il corpo resta un DATO.
+
+    Provato il 13/09 col corpo `- [x] $(touch PROVA.txt) e `touch ALTRO.txt``:
+    EXIT=0 e nessuno dei due file creato.
+    """
+    # ⚠️ SI LEGGE LO YAML PARSATO, NON IL TESTO. La prima versione di questa
+    # cella faceva `split("run:")` ed e' diventata ROSSA su un file CORRETTO:
+    # la parola `run:` compare prima dentro il commento che spiega perche' non
+    # si usa. E' lo stesso difetto gia' misurato il 12/08 su `concurrency`, che
+    # il fixture della matrice documenta — e ci sono cascato scrivendo il
+    # presidio contro un altro difetto. Lo YAML parsato e' anche il livello a
+    # cui Actions legge il file.
+    import yaml
+
+    d = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    passi = [p for p in d["jobs"]["messaggi"]["steps"]
+             if p.get("name") == "Il corpo di questa PR"]
+    assert len(passi) == 1, "il passo sul corpo non c'e' piu'"
+    passo = passi[0]
+
+    assert passo.get("env", {}).get("CORPO") == "${{ github.event.pull_request.body }}", (
+        f"il corpo non arriva piu' per env: env = {passo.get('env')}")
+    assert "github.event.pull_request.body" not in str(passo.get("run", "")), (
+        "il corpo della richiesta e' INTERPOLATO dentro lo script: un corpo "
+        "con $(...) esegue comandi sul runner. Passalo per `env`.")

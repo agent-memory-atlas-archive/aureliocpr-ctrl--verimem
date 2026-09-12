@@ -239,6 +239,87 @@ def controlla(testo: str, percorsi: frozenset[str] | None = None) -> list[str]:
     return problemi
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 🆕 13/09 — IL CORPO DELLA RICHIESTA, giudicato con le STESSE regole.
+#
+# Il messaggio di fusione si compone dal corpo della richiesta: e' scritto nel
+# modello della richiesta e lo facciamo a mano da due giorni. Finche' la regola
+# vive solo li', vale quanto la disciplina di chi apre la richiesta — e una
+# regola che dipende dalla disciplina non e' un presidio.
+#
+# ⚠️ Le regole sui NOMI e sui PERCORSI sono le stesse del messaggio e stanno
+# nella stessa funzione: due superfici divergono, e questo progetto l'ha gia'
+# pagato con l'elenco dei nomi che viveva in quattro posti con tre contenuti.
+# Cambia SOLO il conteggio: qui si contano le righe di PROSA prima della DoD,
+# perche' le caselle non sono prosa e il materiale sotto la DoD sta in fondo
+# apposta.
+RIGHE_DI_PROSA_MASSIME = 3
+INTESTAZIONE_DOD = "### Definition of Done"
+
+
+def _prosa_del_corpo(testo: str) -> str:
+    """Cio' che sta PRIMA della Definition of Done: quello e' il messaggio."""
+    return testo.replace("\r\n", "\n").split(INTESTAZIONE_DOD, 1)[0]
+
+
+def controlla_corpo(testo: str, percorsi: frozenset[str] | None = None) -> list[str]:
+    """Le violazioni del corpo di una richiesta. Lista vuota = pulito.
+
+    Due cose diverse, e vanno dette diverse:
+      · la DoD DEVE esserci — senza, non c'e' niente da comporre e la richiesta
+        non dichiara cosa considera finito;
+      · la prosa prima della DoD sta in tre righe. Il resto non si butta: va in
+        un commento della richiesta o in docs/stato-reale/, che e' esattamente
+        cio' che diciamo per i messaggi troppo lunghi.
+    """
+    if percorsi is None:
+        percorsi = _percorsi_del_repo()
+    testo = testo.replace("\r\n", "\n")
+    problemi: list[str] = []
+
+    if INTESTAZIONE_DOD not in testo:
+        problemi.append(f"manca «{INTESTAZIONE_DOD}»: il corpo non dice cosa "
+                        f"considera finito, e il messaggio di fusione non si compone")
+
+    prosa = [r for r in _prosa_del_corpo(testo).splitlines() if r.strip()]
+    if len(prosa) > RIGHE_DI_PROSA_MASSIME:
+        problemi.append(f"{len(prosa)} righe di prosa prima della DoD (il massimo "
+                        f"e' {RIGHE_DI_PROSA_MASSIME}): le altre vanno in un "
+                        f"commento della richiesta")
+
+    # ⚠️ I nomi e i percorsi si cercano su TUTTO il corpo, non sulla sola prosa:
+    # una riga sotto la DoD e' pubblica quanto la prima.
+    mascherato = _senza_percorsi_veri(testo, percorsi)
+    for etichetta, regola in (("percorso locale", PERCORSO), ("nome utente", UTENTE)):
+        trovati = sorted({m.group(0) for m in regola.finditer(mascherato)})
+        if trovati:
+            problemi.append(f"{etichetta}: {', '.join(trovati[:4])}")
+    nomi = sorted({n for n, _ in _nomi_di_sessione(mascherato, con_identificatori=True)})
+    if nomi:
+        problemi.append("nome di sessione o ruolo interno: " + ", ".join(nomi[:4]))
+    return problemi
+
+
+DOD_FINTA = (INTESTAZIONE_DOD + "\n- [x] RED at the port\n- [ ] GREEN\n")
+
+# (nome, corpo, ci aspettiamo che sia pulito)
+CASI_CORPO: list[tuple[str, str, bool]] = [
+    ("tre righe e la DoD", "Una.\n\nDue.\n\nTre.\n\n" + DOD_FINTA, True),
+    ("una riga sola", "Una.\n\n" + DOD_FINTA, True),
+    ("quattro righe di prosa", "Una.\n\nDue.\n\nTre.\n\nQuattro.\n\n" + DOD_FINTA, False),
+    ("senza DoD", "Una.\n\nDue.\n", False),
+    # Le caselle NON sono prosa: un corpo di tre righe con dieci caselle passa.
+    ("dieci caselle non contano", "Una.\n\nDue.\n\nTre.\n\n" + INTESTAZIONE_DOD + "\n"
+     + "\n".join(f"- [ ] casella {i}" for i in range(10)), True),
+    # Il materiale SOTTO la DoD non conta per la lunghezza...
+    ("materiale sotto la DoD", "Una.\n\n" + DOD_FINTA + "\n---\n\nUna tabella lunga\n"
+     + "\n".join(f"riga {i}" for i in range(20)), True),
+    # ...ma i nomi sotto la DoD SI': quella riga e' pubblica quanto la prima.
+    ("un nome SOTTO la DoD", "Una.\n\n" + DOD_FINTA + "\n---\n\ntrovato da Marie\n", False),
+    ("una sigla nella prosa", "Rilievo di ws5 sul gate.\n\n" + DOD_FINTA, False),
+]
+
+
 def _messaggi_del_range(intervallo: str) -> list[tuple[str, str]]:
     out = subprocess.run(
         ["git", "log", "--format=%H%x00%B%x1e", intervallo],
@@ -360,6 +441,15 @@ def autotest() -> int:
         stato = "pulito" if not problemi else f"bocciato ({problemi[0][:44]})"
         print(f"  [{'OK ' if ok else 'ROSSO'}] {nome:38s} -> {stato}")
 
+    # ⚠️ I casi del CORPO girano nello stesso autotest: un criterio nuovo che
+    # avesse un autotest suo verrebbe lanciato da un posto in meno.
+    for nome, corpo, atteso_pulito in CASI_CORPO:
+        problemi = controlla_corpo(corpo, percorsi=PERCORSI_FINTI)
+        ok = (not problemi) == atteso_pulito
+        esiti.append(ok)
+        stato = "pulito" if not problemi else f"bocciato ({problemi[0][:40]})"
+        print(f"  [{'OK ' if ok else 'ROSSO'}] corpo: {nome:31s} -> {stato}")
+
     # Il commento di git non e' una riga del messaggio: contarlo bocerebbe un
     # commit di due righe scritto nell'editor.
     con_commenti = ("Titolo vero\n\nCorpo vero.\n"
@@ -384,10 +474,28 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--file", help="un messaggio da file (hook commit-msg)")
     parser.add_argument("--range", dest="intervallo", help="i commit di un intervallo git")
+    parser.add_argument("--corpo", help="il corpo di una richiesta, da file")
     parser.add_argument("--autotest", action="store_true")
     a = parser.parse_args(argv)
     if a.autotest:
         return autotest()
+    if a.corpo:
+        testo = pathlib.Path(a.corpo).read_text(encoding="utf-8", errors="replace")
+        problemi = controlla_corpo(testo)
+        if problemi:
+            print("  BOCCIATO  il corpo della richiesta")
+            for p in problemi:
+                print(f"            - {p}")
+            print()
+            print("VERDETTO: ROSSO - il corpo della richiesta non compone un "
+                  "messaggio di fusione.")
+            print("  Il contenuto non si butta, si sposta: le righe in piu' vanno "
+                  "in un commento della richiesta o in docs/stato-reale/.")
+            return 1
+        print("  ok        il corpo della richiesta")
+        print()
+        print("VERDETTO: VERDE - il corpo compone.")
+        return 0
     if a.file:
         grezzo = pathlib.Path(a.file).read_text(encoding="utf-8", errors="replace")
         return stampa([("(in scrittura)", _come_lo_salva_git(grezzo))])
