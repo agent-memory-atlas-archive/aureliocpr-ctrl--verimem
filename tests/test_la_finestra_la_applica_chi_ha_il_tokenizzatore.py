@@ -94,6 +94,10 @@ def test_il_daemon_riduce_lo_span_se_gli_mandi_la_finestra(monkeypatch) -> None:
     class _GiudiceCheRiduce:
         max_length = 8
         chiamate: list[int | None] = []
+        # il daemon riduce SOLO se il tokenizzatore c'e' gia' (non lo carica
+        # sul percorso della richiesta): un doppio che vuole essere ridotto
+        # deve averlo, come il giudice vero dentro il daemon.
+        _tok = object()
 
         # ⚠️ LA FIRMA E' QUELLA VERA, col budget per parametro. Se un doppio
         # resta alla firma vecchia, il daemon lo chiama con due argomenti, il
@@ -207,6 +211,8 @@ def test_il_client_chiede_la_riduzione_solo_a_chi_l_ha_dichiarata(
 
 class _GiudiceCheRegistraLeScritture:
     """Riduce come quello vero, e URLA se qualcuno gli scrive `max_length`."""
+
+    _tok = object()          # il tokenizzatore c'e': il daemon puo' ridurre
 
     def __init__(self) -> None:
         object.__setattr__(self, "scritture_di_max_length", [])
@@ -356,6 +362,7 @@ def test_quando_la_riduzione_riesce_la_risposta_non_si_sporca() -> None:
     """
     class _GiudiceOk:
         max_length = 8
+        _tok = object()
 
         def _entro_la_finestra(self, span, max_length=None):
             return span.splitlines()[0]

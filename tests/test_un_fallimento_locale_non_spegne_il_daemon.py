@@ -58,7 +58,11 @@ def _daemon_che_risponde(monkeypatch, punteggio: float = 0.42) -> list:
     """Sostituisce il daemon e registra se e' stato interrogato."""
     chiamate: list = []
 
-    def _finto(pairs, *, info=None):
+    # `max_length=None` ESPLICITO: il client lo passa da quando la finestra la
+    # applica il daemon. Un doppio che non lo accetta solleva TypeError DENTRO
+    # la chiamata che questo banco osserva, e il rosso racconta un'altra storia.
+    # Non `**kwargs`: quello accetterebbe anche la prossima firma sbagliata.
+    def _finto(pairs, *, info=None, max_length=None):
         chiamate.append(pairs)
         return [punteggio]
 
@@ -96,7 +100,8 @@ def test_se_il_daemon_non_risponde_si_degrada_come_sempre(
     questa cella, «si chiede sempre al daemon» potrebbe voler dire «e si
     rimane appesi»."""
     monkeypatch.setattr(giudice_freddo, "_load_failed", True, raising=False)
-    monkeypatch.setattr(lg, "_gate_via_daemon", lambda pairs, *, info=None: None)
+    monkeypatch.setattr(
+        lg, "_gate_via_daemon", lambda pairs, *, info=None, max_length=None: None)
     monkeypatch.setattr(lg, "warm_local_judge_async", lambda: None)
     assert lg.try_local_score("la fonte", "il claim") is None
 

@@ -339,6 +339,18 @@ class EncodeServer:
                     # sovrascrivevano il valore, e il danno non sarebbe stato un
                     # errore ma uno span tagliato con la finestra di un altro.
                     # Nessun attributo del giudice viene toccato.
+                    # ⚠️ QUI NON SI CARICA NIENTE. Si riduce solo se il
+                    # tokenizzatore e' GIA' in memoria: caricarlo adesso
+                    # sposterebbe i ~31 secondi dal client al daemon, ma sulla
+                    # connessione SINCRONA del client, che scade prima — il
+                    # difetto cambierebbe posto invece di sparire, e il
+                    # chiamante vedrebbe un daemon muto. Nel daemon vero il
+                    # tokenizzatore c'e' gia', perche' e' lo stesso processo
+                    # che tiene il modello del giudice.
+                    if getattr(_giudice, "_tok", None) is None:
+                        raise RuntimeError(
+                            "tokenizzatore non ancora caricato in questo "
+                            "daemon: lo span non viene ridotto")
                     _finestra = int(req["max_length"])
                     req = dict(req)
                     req["gate_pairs"] = [
