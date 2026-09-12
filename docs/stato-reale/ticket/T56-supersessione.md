@@ -164,6 +164,55 @@ Le tre risposte sono (A), (B), (C) qui sopra. I numeri su cui decidere stanno
 nelle sezioni 1 e 5. **Appena la risposta c'è, il RED-2 è una giornata**: il
 banco delle tre porte esiste già, cambia l'asserzione finale.
 
+## 6ter. Perché la cura non mordeva — e perché non è la cura
+
+*Misurato dall'operatore alle 19:04 del 12 settembre, stesso file di test,
+stesso ordine, due alberi:*
+
+```
+783df8b5 (senza cura)   .Fx.   1 failed, 2 passed, 1 xfailed   EXIT=1
+30c27997 (con cura)     .Fx.   1 failed, 2 passed, 1 xfailed   EXIT=1
+```
+
+Le due domande giuste, e la risposta letta nel codice **prima** di cambiare una
+riga:
+
+**① La riga di comando usata dal banco passa dalla riga stampata curata?** SÌ —
+il comando di lettura stampa ogni risultato con quella funzione, una sola
+chiamata, nessun ramo alternativo.
+
+**② Il campo arriva fino alla porta?** SÌ, la catena è integra e verificata
+anello per anello: la riga del database lo popola (`_row`, `superseded_by=…`),
+il fatto lo porta come campo (`Fact.superseded_by`), la vista dell'SDK lo mette
+**sempre** nel dizionario (`_fact_view`, «presente sempre, `None` quando è
+vivo»), e la ricerca costruisce ogni risultato da quella vista.
+
+⇒ Entrambe sì. **Resta una sola spiegazione, e l'esito la prova**: la seconda
+cella è `F`, cioè la lettura di default rende **due** righe invece di una. Due
+righe vive significa **nessuna supersessione**: il campo è `None` su entrambi i
+fatti, e una cura che stampa il campo *quando c'è* non ha niente da stampare.
+
+🔑 **La cura non è stata falsificata: non è stata messa alla prova.** L'unica
+sua parte che il banco ha esercitato è il negativo — «un fatto vivo resta
+muto» — e ha fatto esattamente quello: nessuna delle due righe è stata
+marcata. Un difetto della cura si sarebbe visto come marcatura spuria su un
+fatto vivo, o come esito diverso fra i due alberi; l'esito è identico, che è
+ciò che ci si aspetta da una cura corretta su un caso **non armato**.
+
+⇒ Non si tocca la cura: si arma il banco. La coppia del banco erano **mediana e
+minimo**, due grandezze diverse che sono vere insieme — il banco stesso lo
+dichiarava quindici righe sopra il proprio assert, e pretendeva lo stesso una
+riga sola. La riscrittura usa due versioni della **stessa** grandezza, e
+diventa così anche l'esperimento che mette alla prova la cura.
+
+### Un risultato che nessuno aspettava, e va detto
+
+La quarta cella — il viaggio nel tempo — è **passata**. Era l'unica che avevo
+lasciato dichiaratamente senza predizione, perché il filtro guarda un campo che
+nessuna porta valorizza e ripiega sulla data di creazione. **Il ripiego regge**:
+chiedendo «cosa valeva allora» si riceve la versione di allora. La porta che
+sembrava più fragile delle tre è l'unica che non ha bisogno di niente.
+
 ## 7. La strada che resta, e non è un criterio
 
 Dieci criteri testuali caduti dicono la stessa cosa: **l'informazione che
