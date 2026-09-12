@@ -13947,19 +13947,18 @@ async def _call_tool_impl(name: str, arguments: dict[str, Any]) -> list[t.TextCo
             # without a 'quarantined' status; retiring the old against a diverted new drops
             # both from curated recall — opus final critic).
             if (not _deferred and getattr(fact, "status", "") != "quarantined"
-                    and getattr(_gate, "supersede_fact_ids", None)
                     and a.semantic.get(fact.id) is not None):
-                for _old_id in _gate.supersede_fact_ids:
-                    try:
-                        a.semantic.supersede(
-                            _old_id, fact.id, principal=_MCP_PRINCIPAL,
-                            reason="same-source evolution")
-                    except Exception as _exc:  # noqa: BLE001 — never break the write
-                        # surface it (SDK parity): new admitted, old NOT retired =
-                        # stale-beside-new, the state the feature prevents.
-                        log.warning(
-                            "same-source supersede of %s failed (new %s admitted, old "
-                            "NOT retired): %s", _old_id, fact.id, _exc)
+                # …dalla superficie unica, estratta il 2026-09-12: questo
+                # ciclo esisteva qui e, quasi uguale, nell'SDK — e la riga di
+                # comando non lo aveva affatto. Le guardie di ammissione
+                # restano di ogni porta (vedi il docstring della funzione):
+                # qui il vocabolario e' `_deferred` + lo stato del fatto.
+                from .supersession_policy import (
+                    applica_verdetto as _applica_verdetto,
+                )
+                _applica_verdetto(_gate, fact, a.semantic,
+                                  principal=_MCP_PRINCIPAL, ammesso=True,
+                                  log=log)
             # NOTE: provenance columns (writer_role, meta_narrative) are
             # persisted inline by SemanticMemory.store() via the v6 schema
             # — see _migrate_v5_to_v6 + INSERT clause.
