@@ -5210,6 +5210,27 @@ def riga_di_recall(h: object) -> str:
         s += f" [{colore}]moat {float(gs):.1f}[/{colore}]"
     else:
         s += " [dim]moat --[/dim]"
+    # …E SE E' UNA VERSIONE SUPERATA, LA RIGA LO DICE. Il campo c'era gia':
+    # `_fact_view` porta `superseded_by` sempre, `None` quando il fatto e'
+    # vivo, e il suo docstring spiega perche' fu aggiunto — «un fatto ritirato
+    # tornava attraverso ognuna di queste superfici IDENTICO a uno vivo». La
+    # cura pero' si era fermata sull'OGGETTO: questa riga, che e' cio' che un
+    # utente legge, portava testo, somiglianza e moat e non nominava il campo.
+    # Con `--include-superseded` (e con `--as-of`, dove gli esiti sono
+    # superati per costruzione) arrivavano DUE risposte alla stessa domanda,
+    # con due numeri diversi, e niente diceva quale delle due fosse quella
+    # vecchia. Misurato dalla porta, non dall'SDK: dall'SDK il campo si legge
+    # e il difetto non si vede — e' il livello a cui si guarda che decide.
+    #
+    # Si stampa la COLONNA GREZZA accorciata, non un nome nuovo tipo
+    # «ritirato»: il docstring di `_fact_view` lo chiede esplicitamente («un
+    # secondo nome per un fatto e' come due verita' cominciano a divergere»),
+    # e l'id serve a chi vuole chiedere il successore.
+    # Nella vista curata questo ramo non scatta mai: li' `superseded_by` e'
+    # None per definizione, quindi la riga di tutti i giorni non cambia.
+    sup = h.get("superseded_by") if isinstance(h, dict) else None
+    if sup:
+        s += f" [yellow]superseded by {str(sup)[:8]}[/yellow]"
     return f"- {txt}{s}"
 
 
