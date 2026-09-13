@@ -84,6 +84,24 @@ le regole che seguono.
    sui messaggi lo bocciava: il verde di un cancello garantiva il rosso
    dell'altro (misurato il 13/09 su tre casi costruiti). Le caselle non
    raccontano niente a chi legge il registro fra un anno.
+   Questo è il testo da incollare in quel commento, con l'intestazione
+   **esatta** che il controllo cerca:
+
+   ```markdown
+   ### Definition of Done
+
+   - [ ] RED at the port, with the output in the PR
+   - [ ] GREEN
+   - [ ] map entry updated
+   - [ ] README claim linked or removed
+   - [ ] docstring carries the date and the command
+   - [ ] reviewer is not the author
+   - [ ] QA sign-off
+   - [ ] fact saved with its source
+   - [ ] CI green on the tip
+   - [ ] no new copies
+   ```
+
 3. **Le misure lunghe, le tabelle e i log non si buttano: si spostano** — in un
    commento della richiesta, oppure in `docs/stato-reale/`.
 4. **Niente nomi di persona e niente percorsi locali**, né nel titolo né nel

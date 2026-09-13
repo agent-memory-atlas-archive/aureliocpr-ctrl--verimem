@@ -74,6 +74,12 @@ import sys
 
 RIGHE_MASSIME = 10
 
+#: L'etichetta che distingue il problema di LUNGHEZZA dagli altri. Sta qui e
+#: non e' ricopiata in due posti perche' chi compone il messaggio e chi lo
+#: filtra devono usare LA STESSA stringa: due copie divergono, e la seconda
+#: smetterebbe di riconoscere la prima senza che niente diventi rosso.
+ETICHETTA_LUNGHEZZA = "righe di prosa"
+
 PERCORSO = re.compile(r"([A-Za-z]:[\\/]Users[\\/]|/c/Users/|[A-Za-z]:[\\/]a[\\/]|/home/[a-z]+/)")
 UTENTE = re.compile(r"\baurel(io)?(cpr)?(-ctrl)?\b", re.IGNORECASE)
 # ⚠️ L'ELENCO DEI NOMI NON STA PIU' QUI, e il perche' e' la storia del 12/09:
@@ -230,7 +236,8 @@ def controlla(testo: str, percorsi: frozenset[str] | None = None) -> list[str]:
     # percorso diventerebbe vuota, e un messaggio di dodici righe ne
     # dichiarerebbe dieci. La mascheratura serve ai NOMI, non alla lunghezza.
     if len(righe_intere) > RIGHE_MASSIME:
-        problemi.append(f"{len(righe_intere)} righe di prosa (il massimo e' {RIGHE_MASSIME})")
+        problemi.append(f"{len(righe_intere)} {ETICHETTA_LUNGHEZZA} "
+                        f"(il massimo e' {RIGHE_MASSIME})")
     for etichetta, regola in (("percorso locale", PERCORSO),
                               ("nome utente", UTENTE)):
         trovati = sorted({m.group(0) for m in regola.finditer(corpo)})
@@ -339,7 +346,7 @@ def controlla_corpo(testo: str, percorsi: frozenset[str] | None = None,
 
     prosa = [r for r in _solo_prosa(testo).splitlines() if r.strip()]
     if len(prosa) > RIGHE_DI_PROSA_MASSIME:
-        problemi.append(f"{len(prosa)} righe di prosa (il massimo e' "
+        problemi.append(f"{len(prosa)} {ETICHETTA_LUNGHEZZA} (il massimo e' "
                         f"{RIGHE_DI_PROSA_MASSIME}): il resto va in un commento "
                         f"della richiesta, non nel corpo che diventa il messaggio")
 
@@ -413,10 +420,28 @@ def _messaggi_del_range(intervallo: str) -> list[tuple[str, str]]:
     return coppie
 
 
-def stampa(coppie: list[tuple[str, str]]) -> int:
+def stampa(coppie: list[tuple[str, str]], righe_solo_rapporto: bool = False) -> int:
+    """Stampa il verdetto e lo rende come codice di uscita.
+
+    🆕 13/09 — `righe_solo_rapporto` separa due cose che hanno urgenze diverse,
+    e serve sulle RICHIESTE:
+      · i NOMI e i PERCORSI restano bloccanti anche li', perche' la pagina di
+        una richiesta e' pubblica quanto il tronco: quel testo si legge oggi;
+      · la LUNGHEZZA diventa un rapporto, perche' i commit di una richiesta
+        sono quelli grezzi dell'autore e lo squash non li porta in main —
+        chiedere di riscrivere una storia che nessuno leggera' e' attrito che
+        non compra niente.
+    Sul tronco e sui rami di integrazione NON si usa: li' quei messaggi sono
+    esattamente quelli che restano.
+    """
     sporchi = 0
+    rapporti = 0
     for sha, testo in coppie:
         problemi = controlla(testo)
+        avvisi: list[str] = []
+        if righe_solo_rapporto:
+            avvisi = [p for p in problemi if ETICHETTA_LUNGHEZZA in p]
+            problemi = [p for p in problemi if ETICHETTA_LUNGHEZZA not in p]
         prima = testo.strip().splitlines()[0][:52] if testo.strip() else "(vuoto)"
         if problemi:
             sporchi += 1
@@ -425,12 +450,18 @@ def stampa(coppie: list[tuple[str, str]]) -> int:
                 print(f"           - {p}")
         else:
             print(f"  ok       {sha}  {prima}")
+        for a in avvisi:
+            rapporti += 1
+            print(f"           · (rapporto, non blocca qui) {a}")
     print()
+    if rapporti:
+        print(f"  {rapporti} messaggi sono piu' lunghi del tetto. Qui e' un rapporto: "
+              "quei commit non arrivano in main con lo squash.")
     if sporchi:
         print(f"VERDETTO: ROSSO - {sporchi} messaggi su {len(coppie)} parlano della "
               "nostra stanza invece che del prodotto.")
         print("  Il contenuto non si butta, si sposta: le righe in piu' vanno in "
-              "docs/stato-reale/ o nel corpo della PR.")
+              "docs/stato-reale/ o in un commento della richiesta.")
         return 1
     print(f"VERDETTO: VERDE - {len(coppie)} messaggi, nessuno da correggere.")
     return 0
@@ -570,6 +601,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--corpo", help="il corpo di una richiesta, da file")
     parser.add_argument("--titolo", help="il titolo della richiesta, da file")
     parser.add_argument("--commenti", help="i commenti della richiesta, da file JSON")
+    parser.add_argument(
+        "--righe-solo-rapporto", action="store_true",
+        help=("la lunghezza diventa un rapporto invece di un veto: sulle "
+              "richieste i commit sono quelli grezzi dell'autore e lo squash "
+              "non li porta in main. I nomi e i percorsi restano bloccanti."),
+    )
     parser.add_argument("--autotest", action="store_true")
     a = parser.parse_args(argv)
     if a.autotest:
@@ -622,7 +659,8 @@ def main(argv: list[str] | None = None) -> int:
         grezzo = pathlib.Path(a.file).read_text(encoding="utf-8", errors="replace")
         return stampa([("(in scrittura)", _come_lo_salva_git(grezzo))])
     if a.intervallo:
-        return stampa(_messaggi_del_range(a.intervallo))
+        return stampa(_messaggi_del_range(a.intervallo),
+                      righe_solo_rapporto=a.righe_solo_rapporto)
     parser.error("serve --file, --range o --autotest")
     return 2
 

@@ -483,3 +483,31 @@ def test_il_modello_della_richiesta_passa_il_controllo_che_lo_accompagna() -> No
     assert esito.returncode == 0, (
         "il modello che il repository propone non passa il controllo che il "
         "repository esegue:\n" + esito.stdout + esito.stderr)
+
+
+def test_sulle_richieste_i_nomi_bloccano_e_la_lunghezza_e_solo_un_rapporto() -> None:
+    """⚠️ DUE URGENZE DIVERSE, e vanno separate senza rilassare niente.
+
+    Sulle richieste i commit sono quelli grezzi dell'autore e lo squash non li
+    porta in main: chiedere di riscrivere una storia che nessuno leggera' e'
+    attrito che non compra niente. Ma la PAGINA di una richiesta e' pubblica
+    quanto il tronco, quindi un nome di sessione li' si legge oggi.
+
+    Le due direzioni si provano ENTRAMBE, o non si sta misurando una
+    distinzione: si sta solo allargando una soglia.
+    """
+    sys.path.insert(0, str(RADICE / "scripts"))
+    import messaggio_pulito as mp
+
+    lungo_e_pulito = [("aaaaaaa", "Titolo\n" + "\n".join(
+        f"una riga di racconto numero {i}" for i in range(20)))]
+    lungo_e_con_nome = [("bbbbbbb", "Titolo\n" + "\n".join(
+        f"una riga numero {i}" for i in range(20)) + "\nrilievo di Marie")]
+
+    assert mp.stampa(lungo_e_pulito) == 1, (
+        "sul tronco un messaggio di venti righe deve restare bloccante")
+    assert mp.stampa(lungo_e_pulito, righe_solo_rapporto=True) == 0, (
+        "sulle richieste la sola lunghezza non deve bloccare")
+    assert mp.stampa(lungo_e_con_nome, righe_solo_rapporto=True) == 1, (
+        "un nome di sessione deve bloccare ANCHE sulle richieste: quella "
+        "pagina e' pubblica")
