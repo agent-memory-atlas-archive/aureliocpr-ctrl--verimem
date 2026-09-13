@@ -214,14 +214,23 @@ def controlla(testo: str, percorsi: frozenset[str] | None = None) -> list[str]:
     if percorsi is None:
         percorsi = _percorsi_del_repo()
     corpo = _senza_trailer(testo.replace("\r\n", "\n"))
-    righe_intere = [r for r in corpo.splitlines() if r.strip()]
+    # ⚠️ 13/09 — SI CONTA LA PROSA, NON LE RIGHE. Le caselle di una Definition
+    # of Done non sono prosa, e da quando il repository fonde con
+    # `squash_merge_commit_message: PR_BODY` il corpo di una richiesta DIVENTA
+    # il messaggio su main: con le dieci caselle del modello, il verde di un
+    # cancello garantiva il rosso dell'altro. Il rilievo e' di chi ha letto
+    # questa cura, misurato su tre casi costruiti; una zona compatibile
+    # esisteva (prosa corta + DoD corta), quindi era una collisione di
+    # parametri e non una regola impossibile. Su un messaggio senza DoD il
+    # taglio non toglie niente e il conteggio resta quello di prima.
+    righe_intere = [r for r in _prosa_del_corpo(corpo).splitlines() if r.strip()]
     corpo = _senza_percorsi_veri(corpo, percorsi)
     problemi = []
     # ⚠️ Le righe si contano PRIMA della mascheratura: una riga fatta di solo
     # percorso diventerebbe vuota, e un messaggio di dodici righe ne
     # dichiarerebbe dieci. La mascheratura serve ai NOMI, non alla lunghezza.
     if len(righe_intere) > RIGHE_MASSIME:
-        problemi.append(f"{len(righe_intere)} righe non vuote (il massimo e' {RIGHE_MASSIME})")
+        problemi.append(f"{len(righe_intere)} righe di prosa (il massimo e' {RIGHE_MASSIME})")
     for etichetta, regola in (("percorso locale", PERCORSO),
                               ("nome utente", UTENTE)):
         trovati = sorted({m.group(0) for m in regola.finditer(corpo)})
@@ -298,6 +307,8 @@ def controlla_corpo(testo: str, percorsi: frozenset[str] | None = None) -> list[
     if nomi:
         problemi.append("nome di sessione o ruolo interno: " + ", ".join(nomi[:4]))
     return problemi
+
+
 
 
 DOD_FINTA = (INTESTAZIONE_DOD + "\n- [x] RED at the port\n- [ ] GREEN\n")
@@ -428,6 +439,25 @@ CASI_CON_PERCORSI: list[tuple[str, str, bool]] = [
      "Fix\n\nvedi docs/stato-reale/ws5-ha-sbagliato.md", False),
 ]
 
+# ⚠️ I TRE CASI DELLA COLLISIONE, dal rilievo del 13/09. Il primo e' quello che
+# la rompeva: da quando si fonde con `squash_merge_commit_message: PR_BODY` il
+# corpo di una richiesta DIVENTA il messaggio su main, e con le dieci caselle
+# del modello arrivava a quindici righe — il verde di un cancello garantiva il
+# rosso dell'altro. Il terzo e' il CONTROLLO POSITIVO che il rilievo stesso
+# chiede: la prosa lunga deve restare ROSSA, altrimenti abbiamo allargato la
+# soglia invece di distinguere l'oggetto.
+_CASELLE = "\n".join(f"- [ ] casella {i}" for i in range(10))
+DOD_INTERA = INTESTAZIONE_DOD + "\n" + _CASELLE
+CASI += [
+    ("tre righe di prosa e la DoD intera",
+     "Titolo\n\nUna.\n\nDue.\n\n" + DOD_INTERA, True),
+    ("dieci caselle non fanno un papiro",
+     "Titolo\n\n" + DOD_INTERA, True),
+    ("undici righe di prosa restano rosse ANCHE con la DoD",
+     "Titolo\n" + "\n".join(f"riga {i}" for i in range(10)) + "\n" + DOD_INTERA,
+     False),
+]
+
 
 def autotest() -> int:
     """Il controllo positivo: deve bocciare cio' che deve e TACERE sul resto."""
@@ -475,25 +505,48 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--file", help="un messaggio da file (hook commit-msg)")
     parser.add_argument("--range", dest="intervallo", help="i commit di un intervallo git")
     parser.add_argument("--corpo", help="il corpo di una richiesta, da file")
+    parser.add_argument("--titolo", help="il titolo della richiesta, da file")
     parser.add_argument("--autotest", action="store_true")
     a = parser.parse_args(argv)
     if a.autotest:
         return autotest()
     if a.corpo:
         testo = pathlib.Path(a.corpo).read_text(encoding="utf-8", errors="replace")
+        titolo = ""
+        if a.titolo:
+            titolo = pathlib.Path(a.titolo).read_text(
+                encoding="utf-8", errors="replace").strip()
+        esito = 0
         problemi = controlla_corpo(testo)
         if problemi:
+            esito = 1
             print("  BOCCIATO  il corpo della richiesta")
             for p in problemi:
                 print(f"            - {p}")
-            print()
+        else:
+            print("  ok        il corpo della richiesta")
+        # ⚠️ E POI L'OGGETTO CHE NASCE DOPO: con `squash_merge_commit_title:
+        # PR_TITLE` e `_message: PR_BODY`, il messaggio su main E' titolo + corpo.
+        # Giudicare il solo corpo lascia passare un nome di sessione scritto nel
+        # TITOLO — rilievo del 13/09, ed e' la stessa classe che questo controllo
+        # esiste per chiudere, un pezzo piu' in la'.
+        if titolo:
+            composto = titolo + "\n\n" + testo
+            problemi = controlla(composto)
+            if problemi:
+                esito = 1
+                print("  BOCCIATO  il messaggio che nascerebbe (titolo + corpo)")
+                for p in problemi:
+                    print(f"            - {p}")
+            else:
+                print("  ok        il messaggio che nascerebbe (titolo + corpo)")
+        print()
+        if esito:
             print("VERDETTO: ROSSO - il corpo della richiesta non compone un "
                   "messaggio di fusione.")
             print("  Il contenuto non si butta, si sposta: le righe in piu' vanno "
                   "in un commento della richiesta o in docs/stato-reale/.")
             return 1
-        print("  ok        il corpo della richiesta")
-        print()
         print("VERDETTO: VERDE - il corpo compone.")
         return 0
     if a.file:

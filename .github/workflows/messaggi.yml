@@ -165,13 +165,16 @@ jobs:
         # DATO, e python lo legge dall'ambiente senza che la shell lo guardi.
         env:
           CORPO: ${{ github.event.pull_request.body }}
+          TITOLO: ${{ github.event.pull_request.title }}
         run: |
           python - <<'PY'
           import os, pathlib
           pathlib.Path("corpo_della_richiesta.txt").write_text(
               os.environ.get("CORPO", ""), encoding="utf-8")
+          pathlib.Path("titolo_della_richiesta.txt").write_text(
+              os.environ.get("TITOLO", ""), encoding="utf-8")
           PY
-          python scripts/messaggio_pulito.py --corpo corpo_della_richiesta.txt
+          python scripts/messaggio_pulito.py \n            --corpo corpo_della_richiesta.txt \n            --titolo titolo_della_richiesta.txt
 
       - name: I messaggi appena arrivati su main
         if: github.event_name == 'push'

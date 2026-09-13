@@ -429,8 +429,13 @@ def test_il_corpo_arriva_per_ENV_e_non_interpolato_nello_script() -> None:
     assert len(passi) == 1, "il passo sul corpo non c'e' piu'"
     passo = passi[0]
 
-    assert passo.get("env", {}).get("CORPO") == "${{ github.event.pull_request.body }}", (
-        f"il corpo non arriva piu' per env: env = {passo.get('env')}")
+    env = passo.get("env", {})
+    assert env.get("CORPO") == "${{ github.event.pull_request.body }}", (
+        f"il corpo non arriva piu' per env: env = {env}")
+    # Il TITOLO per la stessa ragione: su main diventa la prima riga del
+    # messaggio, e un nome di sessione scritto li' passerebbe intatto.
+    assert env.get("TITOLO") == "${{ github.event.pull_request.title }}", (
+        f"il titolo non e' giudicato: env = {env}")
     assert "github.event.pull_request.body" not in str(passo.get("run", "")), (
         "il corpo della richiesta e' INTERPOLATO dentro lo script: un corpo "
         "con $(...) esegue comandi sul runner. Passalo per `env`.")
