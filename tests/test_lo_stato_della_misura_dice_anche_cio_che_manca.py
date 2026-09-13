@@ -93,3 +93,42 @@ def test_due_dimensioni_nello_stesso_corpus_si_vedono():
     assert "768d: 1" in t and "384d: 1" in t, (
         "due dimensioni diverse nello stesso corpus non vengono distinte, e "
         f"questo e' il caso che lo strumento esiste per mostrare:\n{t[-300:]}")
+
+
+def test_la_data_dir_e_quella_che_il_prodotto_RISOLVE_non_la_prima_variabile(
+        monkeypatch, tmp_path):
+    """IL RILIEVO BLOCCANTE del pari, 13/09, e il presidio che lo chiude.
+
+    La prima stesura leggeva solo `HIPPO_DATA_DIR`; il prodotto onora tre alias
+    in ordine. Un banco isolato con `ENGRAM_DATA_DIR` riceveva un rapporto che
+    descriveva lo store di PRODUZIONE — percorso, dimensioni, ultimo fatto —
+    mentre la misura avveniva altrove, e le righe corrette stavano due righe
+    sopra quella sbagliata senza che nessuno le confrontasse.
+
+    Il caso e' costruito con l'alias che NON e' il primo dell'elenco: con
+    `HIPPO_DATA_DIR` questa cella sarebbe verde anche sulla versione rotta.
+    """
+    isolato = tmp_path / "store_isolato"
+    isolato.mkdir()
+    monkeypatch.delenv("HIPPO_DATA_DIR", raising=False)
+    monkeypatch.setenv("ENGRAM_DATA_DIR", str(isolato))
+    t = _testo()
+    assert str(isolato) in t, (
+        "il rapporto non nomina lo store isolato con ENGRAM_DATA_DIR: sta "
+        "descrivendo un altro store. " + t[-400:])
+    dopo = t.split("risolta dall'alias")
+    assert len(dopo) > 1 and "ENGRAM_DATA_DIR" in dopo[1][:80], (
+        "il rapporto non dice QUALE alias ha risolto la data dir, e senza "
+        "quella riga chi legge non sa su cosa sta guardando. " + t[-400:])
+
+
+def test_le_etichette_del_demone_non_promettono_piu_di_cio_che_misurano():
+    """Il secondo rilievo: una socket aperta prova che la PORTA e' occupata,
+    non che risponda il demone annunciato, e il nome del modello viene dal
+    file. Le vecchie etichette si leggevano come due misure mai fatte."""
+    t = _testo()
+    assert "in ascolto" not in t, (
+        "«in ascolto» promette che risponda il demone annunciato, mentre la "
+        "sonda misura solo che la porta e' occupata")
+    assert "modello dichiarato nel file" in t or "non esiste" in t, (
+        "il nome del modello e' presentato come misurato mentre viene dal file")

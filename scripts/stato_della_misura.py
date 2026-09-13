@@ -94,19 +94,52 @@ def stato(data_dir: pathlib.Path | None = None) -> list[str]:
             fuori.append(_riga(nome, f"illeggibile: {type(exc).__name__}"))
             continue
         porta = d.get("port")
-        stato_porta = ("in ascolto" if porta and _in_ascolto(porta)
-                       else "NON risponde")
+        # ⚠️ LE DUE ETICHETTE DICONO SOLO QUELLO CHE MISURANO. Una socket
+        # aperta prova che la PORTA e' occupata, non che risponda il demone
+        # annunciato; e il nome del modello viene dal FILE, non da chi
+        # risponde. «in ascolto … modello X» si leggeva come «il demone
+        # annunciato e' vivo e usa X», due cose che nessuna delle due riga
+        # misura — e fra le ipotesi che hanno generato questo file c'era
+        # proprio «un demone con un modello diverso».
+        stato_porta = ("porta occupata" if porta and _in_ascolto(porta)
+                       else "porta libera")
         fuori.append(_riga(nome, f"porta {porta} ({stato_porta})  "
-                                 f"modello {d.get('encoder', '—')}"))
+                                 f"modello dichiarato nel file "
+                                 f"{d.get('encoder', '—')}"))
     if not trovato:
         fuori.append(_riga("", "nessun file di scoperta: nessun demone annunciato"))
 
     fuori.append("")
     fuori.append("LO STORE")
-    dd = data_dir or (pathlib.Path(os.environ["HIPPO_DATA_DIR"])
-                      if os.environ.get("HIPPO_DATA_DIR") else casa)
+    # ⚠️ LA DATA DIR LA RISOLVE IL PRODOTTO, NON QUESTA SONDA. La prima
+    # stesura leggeva solo `HIPPO_DATA_DIR` mentre il prodotto onora tre alias
+    # in ordine (`_compat._ALIAS_DATA_DIR`): un banco isolato con
+    # `ENGRAM_DATA_DIR` riceveva in testa un rapporto che descriveva lo store
+    # di PRODUZIONE — dimensioni, ultimo fatto, percorso — mentre la misura
+    # avveniva altrove, e le due righe corrette stavano due righe sopra quella
+    # sbagliata senza che nessuno le confrontasse.
+    # 🔑 Un registratore che sbaglia soggetto non fa perdere una misura: fa
+    # perdere la fiducia in tutte quelle che ha gia' registrato. Ed e' la
+    # stessa classe che questo file esiste per rendere visibile — due
+    # risolutori con precedenza diversa — ricomparsa dentro lo strumento.
+    # Importare `_env_data_dir` non viola «non interroga il prodotto»: e' una
+    # funzione pura d'ambiente, non apre store e non carica modelli.
+    quale_alias = "— (nessun alias posto)"
+    if data_dir is not None:
+        dd, quale_alias = pathlib.Path(data_dir), "— (passata come argomento)"
+    else:
+        try:
+            from verimem._compat import _ALIAS_DATA_DIR, _env_data_dir
+            scelto = _env_data_dir()
+            dd = pathlib.Path(scelto) if scelto else casa
+            quale_alias = next((a for a in _ALIAS_DATA_DIR
+                                if os.environ.get(a) == scelto), "—") if scelto else "— (nessuno)"
+        except Exception as exc:  # noqa: BLE001 — la sonda non rompe la misura
+            dd = casa
+            quale_alias = f"— non risolvibile: {type(exc).__name__}"
     db = pathlib.Path(dd) / "semantic" / "semantic.db"
     fuori.append(_riga("data dir", dd))
+    fuori.append(_riga("risolta dall'alias", quale_alias))
     if not db.exists():
         fuori.append(_riga("database", "— non esiste ancora"))
         return fuori
