@@ -137,24 +137,44 @@ jobs:
 
       - name: I messaggi di questa PR
         if: github.event_name == 'pull_request'
+        # 🆕 13/09 — QUI I NOMI BLOCCANO E LA LUNGHEZZA NO, e sono due urgenze
+        # diverse: la pagina di una richiesta e' pubblica quanto il tronco, e un
+        # nome di sessione li' si legge OGGI; i commit invece sono quelli grezzi
+        # dell'autore e lo squash non li porta in main, quindi chiedere di
+        # riscriverli e' attrito che non compra niente. Su main e sui rami di
+        # integrazione l'opzione NON si passa: li' quei messaggi restano.
         run: |
-          python scripts/messaggio_pulito.py \
+          python scripts/messaggio_pulito.py --righe-solo-rapporto \
             --range '${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}'
 
-      # ⚠️ QUESTO PASSO NON HA MAI GIRATO quando l'ho scritto: `push: main` si
-      # accende solo dopo la fusione, e un presidio mai eseguito e' un presidio
-      # ignoto. Estratto ed eseguito a mano il 12/09 sui quattro casi che puo'
-      # incontrare — questi sono gli esiti, non una previsione:
-      #
-      #   prima = tutti zeri (ramo nuovo)   -> ::notice NON HO MISURATO   EXIT=0
-      #   prima = sha inesistente           -> ::notice NON HO MISURATO   EXIT=0
-      #   push pulito  (7 messaggi)         -> VERDETTO: VERDE            EXIT=0
-      #   push sporco  (7 messaggi su 7)    -> VERDETTO: ROSSO            EXIT=1
-      #
-      # 📌 E l'exit code va letto SENZA pipe: la prima volta l'ho letto con
-      # `| tail -3` e il caso sporco diceva ROSSO con EXIT=0, perche' l'uscita
-      # della pipe sostituisce quella del comando. E' la trappola contro cui
-      # avvisa il nostro stesso strumento, e ci sono cascato provandone una.
+      - name: Il corpo di questa PR
+        if: github.event_name == 'pull_request'
+        # ⚠️ IL CORPO E IL TITOLO ARRIVANO PER `env`, NON INTERPOLATI NELLO
+        # SCRIPT. `${{ github.event.pull_request.body }}` dentro un `run:`
+        # verrebbe sostituito PRIMA che la shell parta: un corpo che contiene
+        # `$(...)`, un apice o un `;` eseguirebbe quello che vuole sul runner,
+        # e chiunque puo' aprire una richiesta. Per `env` restano DATI.
+        # Il numero e il nome del repository si interpolano: sono un intero e
+        # uno slug, non testo che scrive chi apre la richiesta.
+        env:
+          CORPO: ${{ github.event.pull_request.body }}
+          TITOLO: ${{ github.event.pull_request.title }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
+            --paginate --jq '[.[].body]' > commenti_della_richiesta.json
+          python - <<'PY'
+          import os, pathlib
+          pathlib.Path("corpo_della_richiesta.txt").write_text(
+              os.environ.get("CORPO", ""), encoding="utf-8")
+          pathlib.Path("titolo_della_richiesta.txt").write_text(
+              os.environ.get("TITOLO", ""), encoding="utf-8")
+          PY
+          python scripts/messaggio_pulito.py \
+            --corpo corpo_della_richiesta.txt \
+            --titolo titolo_della_richiesta.txt \
+            --commenti commenti_della_richiesta.json
+
       - name: I messaggi appena arrivati su main
         if: github.event_name == 'push'
         run: |

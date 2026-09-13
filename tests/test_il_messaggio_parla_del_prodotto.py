@@ -38,6 +38,7 @@ import pytest
 
 RADICE = Path(__file__).resolve().parents[1]
 SCRIPT = RADICE / "scripts" / "messaggio_pulito.py"
+WORKFLOW = RADICE / ".github" / "workflows" / "messaggi.yml"
 ELENCO = RADICE / "scripts" / "nomi_delle_sessioni.py"
 HOOK = RADICE / ".githooks" / "commit-msg"
 
@@ -385,3 +386,128 @@ def test_una_riga_del_corpo_travestita_da_trailer_non_sfugge(repo: Path) -> None
     assert esito.returncode == 1, f"la riga travestita e' sfuggita:\n{esito.stdout}"
     assert "percorso locale" in esito.stdout
     assert "nome di sessione" in esito.stdout
+
+
+def test_il_corpo_della_richiesta_e_giudicato_dallo_stesso_controllo() -> None:
+    """Il criterio del corpo vive nello stesso file delle altre regole.
+
+    Se un giorno qualcuno lo spostasse in uno script suo, i nomi e i percorsi
+    verrebbero cercati da due liste che divergono — e questo progetto l'ha gia'
+    pagato con l'elenco dei nomi in quattro posti con tre contenuti.
+    """
+    esito = _esegui("--autotest")
+    assert esito.returncode == 0, esito.stdout + esito.stderr
+    assert "corpo:" in esito.stdout, (
+        "l'autotest non nomina i casi del corpo: girano da un posto in meno\n"
+        + esito.stdout)
+
+
+def test_il_corpo_arriva_per_ENV_e_non_interpolato_nello_script() -> None:
+    """⚠️ IL PRESIDIO CONTRO UNA «SEMPLIFICAZIONE» CHE APRE IL RUNNER.
+
+    Scrivere `${{ github.event.pull_request.body }}` dentro un `run:` e' piu'
+    corto e sembra identico. Non lo e': l'espressione viene sostituita PRIMA
+    che la shell parta, quindi un corpo che contiene `$(...)`, un apice o un
+    `;` esegue quello che vuole sul runner — e chiunque puo' aprire una
+    richiesta. Per `env` il corpo resta un DATO.
+
+    Provato il 13/09 col corpo `- [x] $(touch PROVA.txt) e `touch ALTRO.txt``:
+    EXIT=0 e nessuno dei due file creato.
+    """
+    # ⚠️ SI LEGGE LO YAML PARSATO, NON IL TESTO. La prima versione di questa
+    # cella faceva `split("run:")` ed e' diventata ROSSA su un file CORRETTO:
+    # la parola `run:` compare prima dentro il commento che spiega perche' non
+    # si usa. E' lo stesso difetto gia' misurato il 12/08 su `concurrency`, che
+    # il fixture della matrice documenta — e ci sono cascato scrivendo il
+    # presidio contro un altro difetto. Lo YAML parsato e' anche il livello a
+    # cui Actions legge il file.
+    import yaml
+
+    d = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    passi = [p for p in d["jobs"]["messaggi"]["steps"]
+             if p.get("name") == "Il corpo di questa PR"]
+    assert len(passi) == 1, "il passo sul corpo non c'e' piu'"
+    passo = passi[0]
+
+    env = passo.get("env", {})
+    assert env.get("CORPO") == "${{ github.event.pull_request.body }}", (
+        f"il corpo non arriva piu' per env: env = {env}")
+    # Il TITOLO per la stessa ragione: su main diventa la prima riga del
+    # messaggio, e un nome di sessione scritto li' passerebbe intatto.
+    assert env.get("TITOLO") == "${{ github.event.pull_request.title }}", (
+        f"il titolo non e' giudicato: env = {env}")
+    assert "github.event.pull_request.body" not in str(passo.get("run", "")), (
+        "il corpo della richiesta e' INTERPOLATO dentro lo script: un corpo "
+        "con $(...) esegue comandi sul runner. Passalo per `env`.")
+
+
+def test_il_modello_della_richiesta_passa_il_controllo_che_lo_accompagna() -> None:
+    """⚠️ IL MODELLO E IL CRITERIO NON POSSONO DIVERGERE.
+
+    Scritto il 13/09 dopo averlo misurato: il modello di allora, riempito come
+    lo riempirebbe chi apre una richiesta, produceva un corpo di **39 righe di
+    prosa** — cioe' il file che il repository propone violava il controllo che
+    il repository esegue. Nessuno dei due era sbagliato da solo: erano due
+    superfici che si erano mosse in tempi diversi.
+
+    Questa cella lega le due: se qualcuno allunga il modello o stringe il
+    criterio, diventa rossa qui invece che addosso al primo che apre una
+    richiesta.
+    """
+    import json
+    import subprocess
+
+    modello = (RADICE / ".github" / "PULL_REQUEST_TEMPLATE.md").read_text(encoding="utf-8")
+    # riempito come lo riempie un autore: le due righe al posto dei segnaposto,
+    # e i commenti del modello LASCIATI dove sono — che e' il caso peggiore e
+    # anche quello piu' comune.
+    corpo = modello.replace(
+        "\n\n\n",
+        "\nIl prodotto dichiara una cosa in piu' a chi lo usa.\n\n"
+        "Provato dal banco: resta rosso quando fallisce.\n", 1)
+
+    commenti = json.dumps(["### Definition of Done\n- [x] GREEN"])
+    (percorso := RADICE / "commenti_di_prova.json").write_text(commenti, encoding="utf-8")
+    corpo_file = RADICE / "corpo_di_prova.md"
+    corpo_file.write_text(corpo, encoding="utf-8")
+    try:
+        esito = subprocess.run(
+            [sys.executable, str(SCRIPT), "--corpo", str(corpo_file),
+             "--commenti", str(percorso)],
+            cwd=RADICE, capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=120)
+    finally:
+        corpo_file.unlink(missing_ok=True)
+        percorso.unlink(missing_ok=True)
+
+    assert esito.returncode == 0, (
+        "il modello che il repository propone non passa il controllo che il "
+        "repository esegue:\n" + esito.stdout + esito.stderr)
+
+
+def test_sulle_richieste_i_nomi_bloccano_e_la_lunghezza_e_solo_un_rapporto() -> None:
+    """⚠️ DUE URGENZE DIVERSE, e vanno separate senza rilassare niente.
+
+    Sulle richieste i commit sono quelli grezzi dell'autore e lo squash non li
+    porta in main: chiedere di riscrivere una storia che nessuno leggera' e'
+    attrito che non compra niente. Ma la PAGINA di una richiesta e' pubblica
+    quanto il tronco, quindi un nome di sessione li' si legge oggi.
+
+    Le due direzioni si provano ENTRAMBE, o non si sta misurando una
+    distinzione: si sta solo allargando una soglia.
+    """
+    sys.path.insert(0, str(RADICE / "scripts"))
+    import messaggio_pulito as mp
+
+    lungo_e_pulito = [("aaaaaaa", "Titolo\n" + "\n".join(
+        f"una riga di racconto numero {i}" for i in range(20)))]
+    lungo_e_con_nome = [("bbbbbbb", "Titolo\n" + "\n".join(
+        f"una riga numero {i}" for i in range(20)) + "\nrilievo di Marie")]
+
+    assert mp.stampa(lungo_e_pulito) == 1, (
+        "sul tronco un messaggio di venti righe deve restare bloccante")
+    assert mp.stampa(lungo_e_pulito, righe_solo_rapporto=True) == 0, (
+        "sulle richieste la sola lunghezza non deve bloccare")
+    assert mp.stampa(lungo_e_con_nome, righe_solo_rapporto=True) == 1, (
+        "un nome di sessione deve bloccare ANCHE sulle richieste: quella "
+        "pagina e' pubblica")

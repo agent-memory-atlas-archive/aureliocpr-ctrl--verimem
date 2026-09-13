@@ -74,6 +74,12 @@ import sys
 
 RIGHE_MASSIME = 10
 
+#: L'etichetta che distingue il problema di LUNGHEZZA dagli altri. Sta qui e
+#: non e' ricopiata in due posti perche' chi compone il messaggio e chi lo
+#: filtra devono usare LA STESSA stringa: due copie divergono, e la seconda
+#: smetterebbe di riconoscere la prima senza che niente diventi rosso.
+ETICHETTA_LUNGHEZZA = "righe di prosa"
+
 PERCORSO = re.compile(r"([A-Za-z]:[\\/]Users[\\/]|/c/Users/|[A-Za-z]:[\\/]a[\\/]|/home/[a-z]+/)")
 UTENTE = re.compile(r"\baurel(io)?(cpr)?(-ctrl)?\b", re.IGNORECASE)
 # ⚠️ L'ELENCO DEI NOMI NON STA PIU' QUI, e il perche' e' la storia del 12/09:
@@ -214,14 +220,24 @@ def controlla(testo: str, percorsi: frozenset[str] | None = None) -> list[str]:
     if percorsi is None:
         percorsi = _percorsi_del_repo()
     corpo = _senza_trailer(testo.replace("\r\n", "\n"))
-    righe_intere = [r for r in corpo.splitlines() if r.strip()]
+    # ⚠️ 13/09 — SI CONTA LA PROSA, NON LE RIGHE. Le caselle di una Definition
+    # of Done non sono prosa, e da quando il repository fonde con
+    # `squash_merge_commit_message: PR_BODY` il corpo di una richiesta DIVENTA
+    # il messaggio su main: con le dieci caselle del modello, il verde di un
+    # cancello garantiva il rosso dell'altro. Il rilievo e' di chi ha letto
+    # questa cura, misurato su tre casi costruiti; una zona compatibile
+    # esisteva (prosa corta + DoD corta), quindi era una collisione di
+    # parametri e non una regola impossibile. Su un messaggio senza DoD il
+    # taglio non toglie niente e il conteggio resta quello di prima.
+    righe_intere = [r for r in _solo_prosa(corpo).splitlines() if r.strip()]
     corpo = _senza_percorsi_veri(corpo, percorsi)
     problemi = []
     # ⚠️ Le righe si contano PRIMA della mascheratura: una riga fatta di solo
     # percorso diventerebbe vuota, e un messaggio di dodici righe ne
     # dichiarerebbe dieci. La mascheratura serve ai NOMI, non alla lunghezza.
     if len(righe_intere) > RIGHE_MASSIME:
-        problemi.append(f"{len(righe_intere)} righe non vuote (il massimo e' {RIGHE_MASSIME})")
+        problemi.append(f"{len(righe_intere)} {ETICHETTA_LUNGHEZZA} "
+                        f"(il massimo e' {RIGHE_MASSIME})")
     for etichetta, regola in (("percorso locale", PERCORSO),
                               ("nome utente", UTENTE)):
         trovati = sorted({m.group(0) for m in regola.finditer(corpo)})
@@ -237,6 +253,152 @@ def controlla(testo: str, percorsi: frozenset[str] | None = None) -> list[str]:
     if nomi:
         problemi.append("nome di sessione o ruolo interno: " + ", ".join(nomi[:4]))
     return problemi
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 🆕 13/09 — IL CORPO DELLA RICHIESTA, giudicato con le STESSE regole.
+#
+# Il messaggio di fusione si compone dal corpo della richiesta: e' scritto nel
+# modello della richiesta e lo facciamo a mano da due giorni. Finche' la regola
+# vive solo li', vale quanto la disciplina di chi apre la richiesta — e una
+# regola che dipende dalla disciplina non e' un presidio.
+#
+# ⚠️ Le regole sui NOMI e sui PERCORSI sono le stesse del messaggio e stanno
+# nella stessa funzione: due superfici divergono, e questo progetto l'ha gia'
+# pagato con l'elenco dei nomi che viveva in quattro posti con tre contenuti.
+# Cambia SOLO il conteggio: qui si contano le righe di PROSA prima della DoD,
+# perche' le caselle non sono prosa e il materiale sotto la DoD sta in fondo
+# apposta.
+RIGHE_DI_PROSA_MASSIME = 3
+INTESTAZIONE_DOD = "### Definition of Done"
+
+#: Le righe che non sono prosa in nessuno dei due oggetti che misuriamo — un
+#: corpo di richiesta e un messaggio di commit. Una casella di spunta non
+#: racconta niente a chi legge il registro fra un anno: e' un adempimento, e
+#: contarla come una riga di racconto ha prodotto la collisione del 13/09, in
+#: cui il verde di un cancello garantiva il rosso dell'altro.
+_NON_E_PROSA = re.compile(
+    r"^\s*(?:"
+    r"- \[[ xX]\]"                 # una casella della Definition of Done
+    r"|#{1,6}\s"                   # un'intestazione markdown
+    r"|-{3,}\s*$"                  # un separatore
+    r"|🤖\s"                        # il trailer generato
+    r"|\|.*\|\s*$"                 # una riga di tabella
+    r")",
+)
+
+
+def _solo_prosa(testo: str) -> str:
+    """Il testo senza le righe che non sono prosa.
+
+    ⚠️ Si toglie la RIGA, non il carattere: mascherare lascerebbe una riga
+    vuota, e le righe vuote non si contano comunque — ma un giorno qualcuno
+    conterebbe i caratteri e troverebbe un testo che non ha mai scritto
+    nessuno.
+    """
+    # ⚠️ I COMMENTI DEL MODELLO NON SONO PROSA, e vanno tolti PRIMA di contare
+    # le righe: un blocco `<!-- … -->` sta su piu' righe, e un filtro riga per
+    # riga non lo vedrebbe. Provato il 13/09: il modello della richiesta, com'era
+    # scritto nel repository, produceva un corpo di 39 righe di prosa — cioe' il
+    # modello stesso non passava il controllo che accompagna.
+    # 📌 LIMITE DICHIARATO: non sappiamo se la piattaforma tolga questi commenti
+    # dal messaggio di fusione, perche' nel tronco non c'e' NESSUN commit nato
+    # dal corpo intero (`git log --grep '<!--'` -> 0, misurato). Se li porta,
+    # restano rumore nel log: per questo il modello e' anche CORTO — due difese
+    # invece di una scommessa.
+    senza_commenti = re.sub(r"<!--.*?-->", "", testo.replace("\r\n", "\n"),
+                            flags=re.DOTALL)
+    return "\n".join(r for r in senza_commenti.splitlines()
+                     if not _NON_E_PROSA.match(r))
+
+
+def _prosa_del_corpo(testo: str) -> str:
+    """Cio' che sta PRIMA della Definition of Done: quello e' il messaggio."""
+    return testo.replace("\r\n", "\n").split(INTESTAZIONE_DOD, 1)[0]
+
+
+def controlla_corpo(testo: str, percorsi: frozenset[str] | None = None,
+                    commenti: list[str] | None = None) -> list[str]:
+    """Le violazioni del corpo di una richiesta. Lista vuota = pulito.
+
+    🔴 13/09 — LA DoD NON STA PIU' NEL CORPO, e il perche' e' una misura, non
+    un gusto. Da quando il repository fonde con `squash_merge_commit_message:
+    PR_BODY` il corpo DIVENTA il messaggio su main: con le dieci caselle del
+    modello, il corpo che questo controllo pretendeva produceva un messaggio che
+    l'altro cancello bocciava — il verde di un cancello garantiva il rosso
+    dell'altro. La cura non e' spostare una soglia: e' tenere fuori dal corpo
+    cio' che non deve arrivare su main.
+
+    ⇒ Tre pretese, e la terza e' quella che impedisce di perdere la DoD per
+    strada:
+      · al massimo tre righe di PROSA (le caselle non sono prosa, ovunque
+        stiano, e il trailer generato non conta);
+      · zero nomi di sessione e zero percorsi locali, sul corpo INTERO;
+      · la Definition of Done deve esistere in un COMMENTO della richiesta.
+        Se `commenti` non viene passato, la terza pretesa non si misura e lo
+        DICE: un controllo che non gira e tace si legge come un controllo
+        verde.
+    """
+    if percorsi is None:
+        percorsi = _percorsi_del_repo()
+    testo = testo.replace("\r\n", "\n")
+    problemi: list[str] = []
+
+    prosa = [r for r in _solo_prosa(testo).splitlines() if r.strip()]
+    if len(prosa) > RIGHE_DI_PROSA_MASSIME:
+        problemi.append(f"{len(prosa)} {ETICHETTA_LUNGHEZZA} (il massimo e' "
+                        f"{RIGHE_DI_PROSA_MASSIME}): il resto va in un commento "
+                        f"della richiesta, non nel corpo che diventa il messaggio")
+
+    if commenti is None:
+        problemi.append("NON MISURATO: la Definition of Done in un commento "
+                        "(nessun commento passato al controllo)")
+    elif not any(INTESTAZIONE_DOD in c for c in commenti):
+        problemi.append(f"nessun commento porta «{INTESTAZIONE_DOD}»: la "
+                        f"richiesta non dichiara cosa considera finito")
+
+    # ⚠️ I nomi e i percorsi si cercano su TUTTO il corpo, non sulla sola prosa:
+    # una riga in fondo e' pubblica quanto la prima, e finisce su main con lei.
+    mascherato = _senza_percorsi_veri(testo, percorsi)
+    for etichetta, regola in (("percorso locale", PERCORSO), ("nome utente", UTENTE)):
+        trovati = sorted({m.group(0) for m in regola.finditer(mascherato)})
+        if trovati:
+            problemi.append(f"{etichetta}: {', '.join(trovati[:4])}")
+    nomi = sorted({n for n, _ in _nomi_di_sessione(mascherato, con_identificatori=True)})
+    if nomi:
+        problemi.append("nome di sessione o ruolo interno: " + ", ".join(nomi[:4]))
+    return problemi
+
+
+DOD_IN_COMMENTO = [INTESTAZIONE_DOD + "\n- [x] RED at the port\n- [ ] GREEN\n"]
+
+# (nome, corpo, commenti, ci aspettiamo che sia pulito)
+CASI_CORPO: list[tuple[str, str, list[str] | None, bool]] = [
+    ("tre righe e la DoD in un commento",
+     "Una.\n\nDue.\n\nTre.\n", DOD_IN_COMMENTO, True),
+    ("una riga sola", "Una.\n", DOD_IN_COMMENTO, True),
+    ("quattro righe di prosa",
+     "Una.\n\nDue.\n\nTre.\n\nQuattro.\n", DOD_IN_COMMENTO, False),
+    # La terza pretesa: la DoD non sparisce, si sposta.
+    ("nessun commento porta la DoD", "Una.\n", ["un commento qualunque"], False),
+    ("nessun commento affatto", "Una.\n", [], False),
+    # ⚠️ Il controllo che NON GIRA lo dice: se `commenti` non arriva, il
+    # verdetto non e' verde, e' «NON MISURATO».
+    ("commenti non passati al controllo", "Una.\n", None, False),
+    # Le caselle non sono prosa NEANCHE nel corpo: se qualcuno le lascia li',
+    # non fanno scattare la lunghezza — ma la DoD deve stare comunque in un
+    # commento, perche' il corpo diventa il messaggio su main.
+    ("caselle lasciate nel corpo", "Una.\n" + INTESTAZIONE_DOD
+     + "\n- [x] GREEN\n- [ ] altro\n", DOD_IN_COMMENTO, True),
+    ("una tabella non e' prosa",
+     "Una.\n\n| a | b |\n|---|---|\n| 1 | 2 |\n", DOD_IN_COMMENTO, True),
+    ("il trailer generato non e' prosa",
+     "Una.\n\nDue.\n\nTre.\n\n🤖 Generated with qualcosa\n", DOD_IN_COMMENTO, True),
+    ("un nome di sessione nel corpo",
+     "Rilievo di ws5 sul gate.\n", DOD_IN_COMMENTO, False),
+    ("un nome umano in fondo al corpo",
+     "Una.\n\nDue.\n\ntrovato da Marie\n", DOD_IN_COMMENTO, False),
+]
 
 
 def _messaggi_del_range(intervallo: str) -> list[tuple[str, str]]:
@@ -258,10 +420,28 @@ def _messaggi_del_range(intervallo: str) -> list[tuple[str, str]]:
     return coppie
 
 
-def stampa(coppie: list[tuple[str, str]]) -> int:
+def stampa(coppie: list[tuple[str, str]], righe_solo_rapporto: bool = False) -> int:
+    """Stampa il verdetto e lo rende come codice di uscita.
+
+    🆕 13/09 — `righe_solo_rapporto` separa due cose che hanno urgenze diverse,
+    e serve sulle RICHIESTE:
+      · i NOMI e i PERCORSI restano bloccanti anche li', perche' la pagina di
+        una richiesta e' pubblica quanto il tronco: quel testo si legge oggi;
+      · la LUNGHEZZA diventa un rapporto, perche' i commit di una richiesta
+        sono quelli grezzi dell'autore e lo squash non li porta in main —
+        chiedere di riscrivere una storia che nessuno leggera' e' attrito che
+        non compra niente.
+    Sul tronco e sui rami di integrazione NON si usa: li' quei messaggi sono
+    esattamente quelli che restano.
+    """
     sporchi = 0
+    rapporti = 0
     for sha, testo in coppie:
         problemi = controlla(testo)
+        avvisi: list[str] = []
+        if righe_solo_rapporto:
+            avvisi = [p for p in problemi if ETICHETTA_LUNGHEZZA in p]
+            problemi = [p for p in problemi if ETICHETTA_LUNGHEZZA not in p]
         prima = testo.strip().splitlines()[0][:52] if testo.strip() else "(vuoto)"
         if problemi:
             sporchi += 1
@@ -270,12 +450,18 @@ def stampa(coppie: list[tuple[str, str]]) -> int:
                 print(f"           - {p}")
         else:
             print(f"  ok       {sha}  {prima}")
+        for a in avvisi:
+            rapporti += 1
+            print(f"           · (rapporto, non blocca qui) {a}")
     print()
+    if rapporti:
+        print(f"  {rapporti} messaggi sono piu' lunghi del tetto. Qui e' un rapporto: "
+              "quei commit non arrivano in main con lo squash.")
     if sporchi:
         print(f"VERDETTO: ROSSO - {sporchi} messaggi su {len(coppie)} parlano della "
               "nostra stanza invece che del prodotto.")
         print("  Il contenuto non si butta, si sposta: le righe in piu' vanno in "
-              "docs/stato-reale/ o nel corpo della PR.")
+              "docs/stato-reale/ o in un commento della richiesta.")
         return 1
     print(f"VERDETTO: VERDE - {len(coppie)} messaggi, nessuno da correggere.")
     return 0
@@ -347,6 +533,25 @@ CASI_CON_PERCORSI: list[tuple[str, str, bool]] = [
      "Fix\n\nvedi docs/stato-reale/ws5-ha-sbagliato.md", False),
 ]
 
+# ⚠️ I TRE CASI DELLA COLLISIONE, dal rilievo del 13/09. Il primo e' quello che
+# la rompeva: da quando si fonde con `squash_merge_commit_message: PR_BODY` il
+# corpo di una richiesta DIVENTA il messaggio su main, e con le dieci caselle
+# del modello arrivava a quindici righe — il verde di un cancello garantiva il
+# rosso dell'altro. Il terzo e' il CONTROLLO POSITIVO che il rilievo stesso
+# chiede: la prosa lunga deve restare ROSSA, altrimenti abbiamo allargato la
+# soglia invece di distinguere l'oggetto.
+_CASELLE = "\n".join(f"- [ ] casella {i}" for i in range(10))
+DOD_INTERA = INTESTAZIONE_DOD + "\n" + _CASELLE
+CASI += [
+    ("tre righe di prosa e la DoD intera",
+     "Titolo\n\nUna.\n\nDue.\n\n" + DOD_INTERA, True),
+    ("dieci caselle non fanno un papiro",
+     "Titolo\n\n" + DOD_INTERA, True),
+    ("undici righe di prosa restano rosse ANCHE con la DoD",
+     "Titolo\n" + "\n".join(f"riga {i}" for i in range(10)) + "\n" + DOD_INTERA,
+     False),
+]
+
 
 def autotest() -> int:
     """Il controllo positivo: deve bocciare cio' che deve e TACERE sul resto."""
@@ -359,6 +564,15 @@ def autotest() -> int:
         esiti.append(ok)
         stato = "pulito" if not problemi else f"bocciato ({problemi[0][:44]})"
         print(f"  [{'OK ' if ok else 'ROSSO'}] {nome:38s} -> {stato}")
+
+    # ⚠️ I casi del CORPO girano nello stesso autotest: un criterio nuovo che
+    # avesse un autotest suo verrebbe lanciato da un posto in meno.
+    for nome, corpo, commenti, atteso_pulito in CASI_CORPO:
+        problemi = controlla_corpo(corpo, percorsi=PERCORSI_FINTI, commenti=commenti)
+        ok = (not problemi) == atteso_pulito
+        esiti.append(ok)
+        stato = "pulito" if not problemi else f"bocciato ({problemi[0][:40]})"
+        print(f"  [{'OK ' if ok else 'ROSSO'}] corpo: {nome:31s} -> {stato}")
 
     # Il commento di git non e' una riga del messaggio: contarlo bocerebbe un
     # commit di due righe scritto nell'editor.
@@ -384,15 +598,69 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--file", help="un messaggio da file (hook commit-msg)")
     parser.add_argument("--range", dest="intervallo", help="i commit di un intervallo git")
+    parser.add_argument("--corpo", help="il corpo di una richiesta, da file")
+    parser.add_argument("--titolo", help="il titolo della richiesta, da file")
+    parser.add_argument("--commenti", help="i commenti della richiesta, da file JSON")
+    parser.add_argument(
+        "--righe-solo-rapporto", action="store_true",
+        help=("la lunghezza diventa un rapporto invece di un veto: sulle "
+              "richieste i commit sono quelli grezzi dell'autore e lo squash "
+              "non li porta in main. I nomi e i percorsi restano bloccanti."),
+    )
     parser.add_argument("--autotest", action="store_true")
     a = parser.parse_args(argv)
     if a.autotest:
         return autotest()
+    if a.corpo:
+        testo = pathlib.Path(a.corpo).read_text(encoding="utf-8", errors="replace")
+        titolo = ""
+        if a.titolo:
+            titolo = pathlib.Path(a.titolo).read_text(
+                encoding="utf-8", errors="replace").strip()
+        esito = 0
+        commenti = None
+        if a.commenti:
+            import json
+            commenti = json.loads(
+                pathlib.Path(a.commenti).read_text(encoding="utf-8", errors="replace"))
+        problemi = controlla_corpo(testo, commenti=commenti)
+        if problemi:
+            esito = 1
+            print("  BOCCIATO  il corpo della richiesta")
+            for p in problemi:
+                print(f"            - {p}")
+        else:
+            print("  ok        il corpo della richiesta")
+        # ⚠️ E POI L'OGGETTO CHE NASCE DOPO: con `squash_merge_commit_title:
+        # PR_TITLE` e `_message: PR_BODY`, il messaggio su main E' titolo + corpo.
+        # Giudicare il solo corpo lascia passare un nome di sessione scritto nel
+        # TITOLO — rilievo del 13/09, ed e' la stessa classe che questo controllo
+        # esiste per chiudere, un pezzo piu' in la'.
+        if titolo:
+            composto = titolo + "\n\n" + testo
+            problemi = controlla(composto)
+            if problemi:
+                esito = 1
+                print("  BOCCIATO  il messaggio che nascerebbe (titolo + corpo)")
+                for p in problemi:
+                    print(f"            - {p}")
+            else:
+                print("  ok        il messaggio che nascerebbe (titolo + corpo)")
+        print()
+        if esito:
+            print("VERDETTO: ROSSO - il corpo della richiesta non compone un "
+                  "messaggio di fusione.")
+            print("  Il contenuto non si butta, si sposta: le righe in piu' vanno "
+                  "in un commento della richiesta o in docs/stato-reale/.")
+            return 1
+        print("VERDETTO: VERDE - il corpo compone.")
+        return 0
     if a.file:
         grezzo = pathlib.Path(a.file).read_text(encoding="utf-8", errors="replace")
         return stampa([("(in scrittura)", _come_lo_salva_git(grezzo))])
     if a.intervallo:
-        return stampa(_messaggi_del_range(a.intervallo))
+        return stampa(_messaggi_del_range(a.intervallo),
+                      righe_solo_rapporto=a.righe_solo_rapporto)
     parser.error("serve --file, --range o --autotest")
     return 2
 
