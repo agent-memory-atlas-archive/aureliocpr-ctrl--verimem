@@ -136,7 +136,15 @@ jobs:
         run: python scripts/messaggio_pulito.py --autotest
 
       - name: I messaggi di questa PR
-        if: github.event_name == 'pull_request'
+        # 🔕 13/09 — SPENTO SULLE RICHIESTE, e non e' un rilassamento: i commit
+        # di una richiesta sono quelli grezzi dell'autore, e lo squash non li
+        # porta in main. Bocciarli era un falso allarme PER COSTRUZIONE, che
+        # costringeva a riscrivere una storia che nessuno leggera'. Resta vivo
+        # dove i messaggi arrivano davvero: sul tronco e sui rami di
+        # integrazione, dove i commit SONO quelli che verranno fusi.
+        if: >-
+          github.event_name == 'pull_request'
+          && startsWith(github.head_ref, 'integrazione/')
         run: |
           python scripts/messaggio_pulito.py \
             --range '${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}'
@@ -157,16 +165,20 @@ jobs:
       # avvisa il nostro stesso strumento, e ci sono cascato provandone una.
       - name: Il corpo di questa PR
         if: github.event_name == 'pull_request'
-        # ⚠️ IL CORPO ARRIVA PER `env`, NON INTERPOLATO NELLO SCRIPT.
-        # `${{ github.event.pull_request.body }}` dentro un `run:` verrebbe
-        # sostituito PRIMA che la shell parta: un corpo che contiene
+        # ⚠️ IL CORPO E IL TITOLO ARRIVANO PER `env`, NON INTERPOLATI NELLO
+        # SCRIPT. `${{ github.event.pull_request.body }}` dentro un `run:`
+        # verrebbe sostituito PRIMA che la shell parta: un corpo che contiene
         # `$(...)`, un apice o un `;` eseguirebbe quello che vuole sul runner,
-        # e chiunque puo' aprire una richiesta. Per `env` il corpo resta un
-        # DATO, e python lo legge dall'ambiente senza che la shell lo guardi.
+        # e chiunque puo' aprire una richiesta. Per `env` restano DATI.
+        # Il numero e il nome del repository si interpolano: sono un intero e
+        # uno slug, non testo che scrive chi apre la richiesta.
         env:
           CORPO: ${{ github.event.pull_request.body }}
           TITOLO: ${{ github.event.pull_request.title }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
+            --paginate --jq '[.[].body]' > commenti_della_richiesta.json
           python - <<'PY'
           import os, pathlib
           pathlib.Path("corpo_della_richiesta.txt").write_text(
@@ -174,7 +186,10 @@ jobs:
           pathlib.Path("titolo_della_richiesta.txt").write_text(
               os.environ.get("TITOLO", ""), encoding="utf-8")
           PY
-          python scripts/messaggio_pulito.py \n            --corpo corpo_della_richiesta.txt \n            --titolo titolo_della_richiesta.txt
+          python scripts/messaggio_pulito.py \
+            --corpo corpo_della_richiesta.txt \
+            --titolo titolo_della_richiesta.txt \
+            --commenti commenti_della_richiesta.json
 
       - name: I messaggi appena arrivati su main
         if: github.event_name == 'push'

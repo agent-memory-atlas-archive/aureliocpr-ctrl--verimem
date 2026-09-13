@@ -223,7 +223,7 @@ def controlla(testo: str, percorsi: frozenset[str] | None = None) -> list[str]:
     # esisteva (prosa corta + DoD corta), quindi era una collisione di
     # parametri e non una regola impossibile. Su un messaggio senza DoD il
     # taglio non toglie niente e il conteggio resta quello di prima.
-    righe_intere = [r for r in _prosa_del_corpo(corpo).splitlines() if r.strip()]
+    righe_intere = [r for r in _solo_prosa(corpo).splitlines() if r.strip()]
     corpo = _senza_percorsi_veri(corpo, percorsi)
     problemi = []
     # ⚠️ Le righe si contano PRIMA della mascheratura: una riga fatta di solo
@@ -265,39 +265,81 @@ def controlla(testo: str, percorsi: frozenset[str] | None = None) -> list[str]:
 RIGHE_DI_PROSA_MASSIME = 3
 INTESTAZIONE_DOD = "### Definition of Done"
 
+#: Le righe che non sono prosa in nessuno dei due oggetti che misuriamo — un
+#: corpo di richiesta e un messaggio di commit. Una casella di spunta non
+#: racconta niente a chi legge il registro fra un anno: e' un adempimento, e
+#: contarla come una riga di racconto ha prodotto la collisione del 13/09, in
+#: cui il verde di un cancello garantiva il rosso dell'altro.
+_NON_E_PROSA = re.compile(
+    r"^\s*(?:"
+    r"- \[[ xX]\]"                 # una casella della Definition of Done
+    r"|#{1,6}\s"                   # un'intestazione markdown
+    r"|-{3,}\s*$"                  # un separatore
+    r"|🤖\s"                        # il trailer generato
+    r"|\|.*\|\s*$"                 # una riga di tabella
+    r")",
+)
+
+
+def _solo_prosa(testo: str) -> str:
+    """Il testo senza le righe che non sono prosa.
+
+    ⚠️ Si toglie la RIGA, non il carattere: mascherare lascerebbe una riga
+    vuota, e le righe vuote non si contano comunque — ma un giorno qualcuno
+    conterebbe i caratteri e troverebbe un testo che non ha mai scritto
+    nessuno.
+    """
+    return "\n".join(r for r in testo.replace("\r\n", "\n").splitlines()
+                     if not _NON_E_PROSA.match(r))
+
 
 def _prosa_del_corpo(testo: str) -> str:
     """Cio' che sta PRIMA della Definition of Done: quello e' il messaggio."""
     return testo.replace("\r\n", "\n").split(INTESTAZIONE_DOD, 1)[0]
 
 
-def controlla_corpo(testo: str, percorsi: frozenset[str] | None = None) -> list[str]:
+def controlla_corpo(testo: str, percorsi: frozenset[str] | None = None,
+                    commenti: list[str] | None = None) -> list[str]:
     """Le violazioni del corpo di una richiesta. Lista vuota = pulito.
 
-    Due cose diverse, e vanno dette diverse:
-      · la DoD DEVE esserci — senza, non c'e' niente da comporre e la richiesta
-        non dichiara cosa considera finito;
-      · la prosa prima della DoD sta in tre righe. Il resto non si butta: va in
-        un commento della richiesta o in docs/stato-reale/, che e' esattamente
-        cio' che diciamo per i messaggi troppo lunghi.
+    🔴 13/09 — LA DoD NON STA PIU' NEL CORPO, e il perche' e' una misura, non
+    un gusto. Da quando il repository fonde con `squash_merge_commit_message:
+    PR_BODY` il corpo DIVENTA il messaggio su main: con le dieci caselle del
+    modello, il corpo che questo controllo pretendeva produceva un messaggio che
+    l'altro cancello bocciava — il verde di un cancello garantiva il rosso
+    dell'altro. La cura non e' spostare una soglia: e' tenere fuori dal corpo
+    cio' che non deve arrivare su main.
+
+    ⇒ Tre pretese, e la terza e' quella che impedisce di perdere la DoD per
+    strada:
+      · al massimo tre righe di PROSA (le caselle non sono prosa, ovunque
+        stiano, e il trailer generato non conta);
+      · zero nomi di sessione e zero percorsi locali, sul corpo INTERO;
+      · la Definition of Done deve esistere in un COMMENTO della richiesta.
+        Se `commenti` non viene passato, la terza pretesa non si misura e lo
+        DICE: un controllo che non gira e tace si legge come un controllo
+        verde.
     """
     if percorsi is None:
         percorsi = _percorsi_del_repo()
     testo = testo.replace("\r\n", "\n")
     problemi: list[str] = []
 
-    if INTESTAZIONE_DOD not in testo:
-        problemi.append(f"manca «{INTESTAZIONE_DOD}»: il corpo non dice cosa "
-                        f"considera finito, e il messaggio di fusione non si compone")
-
-    prosa = [r for r in _prosa_del_corpo(testo).splitlines() if r.strip()]
+    prosa = [r for r in _solo_prosa(testo).splitlines() if r.strip()]
     if len(prosa) > RIGHE_DI_PROSA_MASSIME:
-        problemi.append(f"{len(prosa)} righe di prosa prima della DoD (il massimo "
-                        f"e' {RIGHE_DI_PROSA_MASSIME}): le altre vanno in un "
-                        f"commento della richiesta")
+        problemi.append(f"{len(prosa)} righe di prosa (il massimo e' "
+                        f"{RIGHE_DI_PROSA_MASSIME}): il resto va in un commento "
+                        f"della richiesta, non nel corpo che diventa il messaggio")
+
+    if commenti is None:
+        problemi.append("NON MISURATO: la Definition of Done in un commento "
+                        "(nessun commento passato al controllo)")
+    elif not any(INTESTAZIONE_DOD in c for c in commenti):
+        problemi.append(f"nessun commento porta «{INTESTAZIONE_DOD}»: la "
+                        f"richiesta non dichiara cosa considera finito")
 
     # ⚠️ I nomi e i percorsi si cercano su TUTTO il corpo, non sulla sola prosa:
-    # una riga sotto la DoD e' pubblica quanto la prima.
+    # una riga in fondo e' pubblica quanto la prima, e finisce su main con lei.
     mascherato = _senza_percorsi_veri(testo, percorsi)
     for etichetta, regola in (("percorso locale", PERCORSO), ("nome utente", UTENTE)):
         trovati = sorted({m.group(0) for m in regola.finditer(mascherato)})
@@ -309,25 +351,34 @@ def controlla_corpo(testo: str, percorsi: frozenset[str] | None = None) -> list[
     return problemi
 
 
+DOD_IN_COMMENTO = [INTESTAZIONE_DOD + "\n- [x] RED at the port\n- [ ] GREEN\n"]
 
-
-DOD_FINTA = (INTESTAZIONE_DOD + "\n- [x] RED at the port\n- [ ] GREEN\n")
-
-# (nome, corpo, ci aspettiamo che sia pulito)
-CASI_CORPO: list[tuple[str, str, bool]] = [
-    ("tre righe e la DoD", "Una.\n\nDue.\n\nTre.\n\n" + DOD_FINTA, True),
-    ("una riga sola", "Una.\n\n" + DOD_FINTA, True),
-    ("quattro righe di prosa", "Una.\n\nDue.\n\nTre.\n\nQuattro.\n\n" + DOD_FINTA, False),
-    ("senza DoD", "Una.\n\nDue.\n", False),
-    # Le caselle NON sono prosa: un corpo di tre righe con dieci caselle passa.
-    ("dieci caselle non contano", "Una.\n\nDue.\n\nTre.\n\n" + INTESTAZIONE_DOD + "\n"
-     + "\n".join(f"- [ ] casella {i}" for i in range(10)), True),
-    # Il materiale SOTTO la DoD non conta per la lunghezza...
-    ("materiale sotto la DoD", "Una.\n\n" + DOD_FINTA + "\n---\n\nUna tabella lunga\n"
-     + "\n".join(f"riga {i}" for i in range(20)), True),
-    # ...ma i nomi sotto la DoD SI': quella riga e' pubblica quanto la prima.
-    ("un nome SOTTO la DoD", "Una.\n\n" + DOD_FINTA + "\n---\n\ntrovato da Marie\n", False),
-    ("una sigla nella prosa", "Rilievo di ws5 sul gate.\n\n" + DOD_FINTA, False),
+# (nome, corpo, commenti, ci aspettiamo che sia pulito)
+CASI_CORPO: list[tuple[str, str, list[str] | None, bool]] = [
+    ("tre righe e la DoD in un commento",
+     "Una.\n\nDue.\n\nTre.\n", DOD_IN_COMMENTO, True),
+    ("una riga sola", "Una.\n", DOD_IN_COMMENTO, True),
+    ("quattro righe di prosa",
+     "Una.\n\nDue.\n\nTre.\n\nQuattro.\n", DOD_IN_COMMENTO, False),
+    # La terza pretesa: la DoD non sparisce, si sposta.
+    ("nessun commento porta la DoD", "Una.\n", ["un commento qualunque"], False),
+    ("nessun commento affatto", "Una.\n", [], False),
+    # ⚠️ Il controllo che NON GIRA lo dice: se `commenti` non arriva, il
+    # verdetto non e' verde, e' «NON MISURATO».
+    ("commenti non passati al controllo", "Una.\n", None, False),
+    # Le caselle non sono prosa NEANCHE nel corpo: se qualcuno le lascia li',
+    # non fanno scattare la lunghezza — ma la DoD deve stare comunque in un
+    # commento, perche' il corpo diventa il messaggio su main.
+    ("caselle lasciate nel corpo", "Una.\n" + INTESTAZIONE_DOD
+     + "\n- [x] GREEN\n- [ ] altro\n", DOD_IN_COMMENTO, True),
+    ("una tabella non e' prosa",
+     "Una.\n\n| a | b |\n|---|---|\n| 1 | 2 |\n", DOD_IN_COMMENTO, True),
+    ("il trailer generato non e' prosa",
+     "Una.\n\nDue.\n\nTre.\n\n🤖 Generated with qualcosa\n", DOD_IN_COMMENTO, True),
+    ("un nome di sessione nel corpo",
+     "Rilievo di ws5 sul gate.\n", DOD_IN_COMMENTO, False),
+    ("un nome umano in fondo al corpo",
+     "Una.\n\nDue.\n\ntrovato da Marie\n", DOD_IN_COMMENTO, False),
 ]
 
 
@@ -473,8 +524,8 @@ def autotest() -> int:
 
     # ⚠️ I casi del CORPO girano nello stesso autotest: un criterio nuovo che
     # avesse un autotest suo verrebbe lanciato da un posto in meno.
-    for nome, corpo, atteso_pulito in CASI_CORPO:
-        problemi = controlla_corpo(corpo, percorsi=PERCORSI_FINTI)
+    for nome, corpo, commenti, atteso_pulito in CASI_CORPO:
+        problemi = controlla_corpo(corpo, percorsi=PERCORSI_FINTI, commenti=commenti)
         ok = (not problemi) == atteso_pulito
         esiti.append(ok)
         stato = "pulito" if not problemi else f"bocciato ({problemi[0][:40]})"
@@ -506,6 +557,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--range", dest="intervallo", help="i commit di un intervallo git")
     parser.add_argument("--corpo", help="il corpo di una richiesta, da file")
     parser.add_argument("--titolo", help="il titolo della richiesta, da file")
+    parser.add_argument("--commenti", help="i commenti della richiesta, da file JSON")
     parser.add_argument("--autotest", action="store_true")
     a = parser.parse_args(argv)
     if a.autotest:
@@ -517,7 +569,12 @@ def main(argv: list[str] | None = None) -> int:
             titolo = pathlib.Path(a.titolo).read_text(
                 encoding="utf-8", errors="replace").strip()
         esito = 0
-        problemi = controlla_corpo(testo)
+        commenti = None
+        if a.commenti:
+            import json
+            commenti = json.loads(
+                pathlib.Path(a.commenti).read_text(encoding="utf-8", errors="replace"))
+        problemi = controlla_corpo(testo, commenti=commenti)
         if problemi:
             esito = 1
             print("  BOCCIATO  il corpo della richiesta")
