@@ -3899,7 +3899,22 @@ def facts_retirement_log(
         bd = _bd(sm, topic=topic, limit=limit)
         console.print(f"[bold]{bd['total_retired']}[/bold] retired total")
         for r in bd["by_reason"]:
-            console.print(f"  [cyan]{r['n']:>6}[/cyan]  {safe_cut(r['reason'], 64)}")
+            # LA FORMA ACCANTO AL NUMERO, non solo nel dizionario. Il campo
+            # esisteva sull'oggetto e non sulla porta e' il difetto che questo
+            # stesso ramo ha appena curato altrove: una voce fatta in un
+            # giorno solo e una distribuita su mesi si leggono uguali finche'
+            # la riga non lo dice. Sul corpus vero (2026-09-13) la prima voce
+            # sono 1463 ritiri in 35,9 secondi di una notte di luglio.
+            _f = r.get("forma", "?")
+            _colore = "yellow" if _f == "evento" else "dim"
+            _q = f"{100.0 * r.get('quota', 0.0):.1f}%"
+            _gg = r.get("giorni", 0)
+            _dove = (f"{_gg}g" if _f == "tasso"
+                     else f"1g {100.0 * r.get('quota_giorno_max', 0.0):.0f}%")
+            console.print(
+                f"  [cyan]{r['n']:>6}[/cyan] [dim]{_q:>6}[/dim] "
+                f"[{_colore}]{_f:<7}[/{_colore}] [dim]{_dove:>7}[/dim]  "
+                f"{safe_cut(r['reason'], 46)}")
         console.print("[dim]— by day —[/dim]")
         for d in bd["by_day"]:
             console.print(f"  [cyan]{d['n']:>6}[/cyan]  {d['day']}")
