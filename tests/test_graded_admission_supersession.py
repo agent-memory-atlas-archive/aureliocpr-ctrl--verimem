@@ -23,6 +23,22 @@ OLD = "The subscription costs 100 euros per month."
 NEW = "The subscription costs 150 euros per month."
 WEAK_SOURCE = "Billing notes: various commercial topics were discussed."
 
+#: ⚠️ DUE SCHERMI INDIPENDENTI, E IL BANCO DEVE PASSARE SOLO IL PRIMO.
+#: Misurato il 2026-09-13 dalla porta MCP: con `WEAK_SOURCE` la scrittura non
+#: arriva mai all'ammissione degradata, perche' PRIMA la ferma uno schermo
+#: LESSICALE — `quarantined_by='L4.1'`, «il claim afferma un valore che la
+#: fonte non contiene: 150 euro» — e la quarantena lessicale non e' quella che
+#: T83 misura. Il giudice semantico e' indipendente da quello schermo: qui la
+#: fonte CONTIENE il valore (L4.1 tace) ma non lo sostiene (il giudice lo
+#: punteggia sotto soglia), che e' esattamente la forma per cui l'ammissione
+#: degradata esiste.
+FONTE_DEBOLE_COL_VALORE = (
+    "Billing notes, Q3 meeting: the figure of 150 euros per month came up in "
+    "passing while several commercial topics were discussed; no decision was "
+    "recorded and no plan was named.")
+FONTE_FORTE = (
+    "Billing contract, section 2: the subscription costs 100 euros per month.")
+
 
 @pytest.fixture(autouse=True)
 def _env(monkeypatch):
@@ -35,6 +51,26 @@ def _low_score(monkeypatch, score: float = 12.0):
     import verimem.grounding_gate as gg
     monkeypatch.setattr(gg, "fact_grounding_score_ex",
                         lambda llm, src, prop: (score, "local"))
+
+
+def _punteggi(monkeypatch, mappa: dict[str, float], default: float = 95.0):
+    """CE deterministico ma DIVERSO per proposizione, sulla stessa porta.
+
+    Serve il caso che il docstring di questo file promette — «uno score-12
+    sfratta uno score-95» — e con un punteggio unico per tutte le scritture
+    quel caso non e' costruibile: il valore vecchio entrerebbe anch'esso
+    sotto soglia, e un degradato che ne sfratta un altro degradato non e'
+    l'invariante in discussione.
+    """
+    import verimem.grounding_gate as gg
+
+    def _finto(llm, src, prop):
+        for frammento, punteggio in mappa.items():
+            if frammento in (prop or ""):
+                return (punteggio, "local")
+        return (default, "local")
+
+    monkeypatch.setattr(gg, "fact_grounding_score_ex", _finto)
 
 
 def test_graded_admit_must_not_retire_an_admitted_value(tmp_path: Path,
@@ -213,19 +249,24 @@ def _superseduto_da(sm, fact_id):
 _ARG_VECCHIO = {"proposition": OLD, "topic": "pricing/plan",
                 "verified_by": ["source-doc:billing:1"], "validate": "full"}
 
+#: Il valore che deve NON essere sfrattato entra con la sua fonte e col suo
+#: punteggio pieno: senza fonte sarebbe un `model_claim` mai giudicato, e
+#: «un claim non provato ne sfratta un altro non provato» non e' l'invariante.
+_ARG_VECCHIO_PROVATO = {**_ARG_VECCHIO, "source": FONTE_FORTE}
+
 
 @pytest.mark.asyncio
 async def test_la_porta_MCP_non_ritira_su_un_ammissione_DEGRADATA(
         tmp_path: Path, monkeypatch):
     """Il difetto: dal server di strumenti uno score-12 sfratta uno score-95."""
     monkeypatch.setenv("ENGRAM_GRADED_ADMISSION", "1")
-    _low_score(monkeypatch)
+    _punteggi(monkeypatch, {"150 euros": 12.0})     # il vecchio resta a 95
 
     ricevute, sm = await _scrivi_dalla_porta_mcp(monkeypatch, tmp_path, [
-        _ARG_VECCHIO,
+        _ARG_VECCHIO_PROVATO,
         {"proposition": NEW, "topic": "pricing/plan",
          "verified_by": ["source-doc:billing:1"], "validate": "full",
-         "source": WEAK_SOURCE},
+         "source": FONTE_DEBOLE_COL_VALORE},
     ])
     vecchio, nuovo = ricevute
 
@@ -248,7 +289,18 @@ async def test_la_porta_MCP_non_ritira_su_un_ammissione_DEGRADATA(
     #: `quarantined` e le due celle passavano tutt'e due. Senza questa riga
     #: avrei consegnato un RED verde, cioe' un presidio che non presidia.
     _stato_nuovo = nuovo.get("status")
-    _strati = [w.get("layer") for w in (nuovo.get("warnings") or [])]
+    #: ⚠️ LA STESSA LISTA HA DUE NOMI ALLE DUE PORTE. L'SDK la rende come
+    #: `warnings` (client.py, `_graded_admit` la legge cosi'); questa porta la
+    #: rende come `anti_confab_warnings`. Chiedendo solo il nome dell'SDK la
+    #: lista tornava VUOTA — e una lista vuota si legge «nessuno schermo ha
+    #: parlato», che il 2026-09-13 era falso: ne avevano parlato due.
+    _campi = [c for c in ("anti_confab_warnings", "warnings") if c in nuovo]
+    assert _campi, (
+        "BANCO CIECO: la ricevuta della porta non porta ne' "
+        "`anti_confab_warnings` ne' `warnings`, quindi da qui nessun layer e' "
+        f"osservabile e ogni verdetto su di essi sarebbe inventato. chiavi="
+        f"{sorted(nuovo)}")
+    _strati = [w.get("layer") for c in _campi for w in (nuovo.get(c) or [])]
     assert _stato_nuovo != "quarantined", (
         f"PRECONDIZIONE NON RAGGIUNTA, e questo NON e' un verdetto sul "
         f"prodotto: la scrittura nuova e' entrata come {_stato_nuovo!r} invece "
@@ -288,12 +340,19 @@ async def test_CONTROLLO_la_porta_MCP_ritira_su_un_ammissione_PIENA(
     mancare: e' la supersessione a non funzionare affatto, e la cella
     precedente starebbe misurando il nulla.
     """
-    monkeypatch.delenv("ENGRAM_GRADED_ADMISSION", raising=False)
+    #: ⚠️ L'INTERRUTTORE RESTA ACCESO ANCHE QUI. Al primo giro questa cella
+    #: spegneva `ENGRAM_GRADED_ADMISSION` mentre l'altra lo accendeva: due
+    #: variabili diverse fra le due, e un confronto con due variabili non dice
+    #: quale delle due ha prodotto la differenza. Qui cambia SOLO il punteggio
+    #: del nuovo (95 invece di 12), cioe' solo la cosa di cui T83 parla.
+    monkeypatch.setenv("ENGRAM_GRADED_ADMISSION", "1")
+    _punteggi(monkeypatch, {})                      # tutto a 95: piena
 
     ricevute, sm = await _scrivi_dalla_porta_mcp(monkeypatch, tmp_path, [
-        _ARG_VECCHIO,
+        _ARG_VECCHIO_PROVATO,
         {"proposition": NEW, "topic": "pricing/plan",
-         "verified_by": ["source-doc:billing:1"], "validate": "full"},
+         "verified_by": ["source-doc:billing:1"], "validate": "full",
+         "source": FONTE_DEBOLE_COL_VALORE},
     ])
     vecchio, nuovo = ricevute
 
@@ -301,6 +360,18 @@ async def test_CONTROLLO_la_porta_MCP_ritira_su_un_ammissione_PIENA(
     id_nuovo = nuovo.get("id") or nuovo.get("fact_id")
     assert id_vecchio and id_nuovo, (
         f"le due scritture non hanno reso due id: {vecchio} / {nuovo}")
+
+    #: Il controllo positivo deve misurare un'ammissione PIENA: se il nuovo
+    #: entrasse qui in forma degradata e la porta ritirasse lo stesso, questa
+    #: cella verde direbbe «la supersessione funziona» mentre starebbe
+    #: mostrando proprio il difetto dell'altra — e lo attribuirebbe al
+    #: contrario.
+    _strati_c = [w.get("layer")
+                 for c in ("anti_confab_warnings", "warnings")
+                 for w in (nuovo.get(c) or [])]
+    assert not any(str(s).endswith("-graded") for s in _strati_c), (
+        f"CONTROLLO POSITIVO SPENTO: il nuovo e' entrato DEGRADATO ({_strati_c}), "
+        "quindi questa cella non misura l'ammissione piena che dice di misurare.")
 
     assert _superseduto_da(sm, id_vecchio) == id_nuovo, (
         "CONTROLLO POSITIVO SPENTO: con un'ammissione PIENA la porta MCP non "
