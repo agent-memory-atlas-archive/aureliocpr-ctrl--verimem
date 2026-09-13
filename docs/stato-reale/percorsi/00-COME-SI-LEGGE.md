@@ -56,9 +56,36 @@ for v in $(env | grep -oE '^(VERIMEM|ENGRAM|HIPPO)_[A-Z0-9_]*'); do unset "$v"; 
 env | grep -E '^(VERIMEM|ENGRAM|HIPPO)_' || echo "ambiente pulito"
 ```
 
-❓ **Da riempire alla prima esecuzione**: quante variabili ha tolto il ciclo.
-Se sono più di zero, **scrivilo nel post**: è la misura di quanto l'ambiente
-della squadra sporca le misure della squadra.
+✅ **RIEMPITO ALL'ESECUZIONE — e il numero è di nuovo NOVE.** Nel giro del 13/09,
+su una shell diversa e a sei giorni di distanza, il ciclo ha tolto **nove**
+variabili: le stesse tre famiglie, fra cui due che puntano a uno store altrui e
+una che spegne il giudizio locale. **Due misure indipendenti, stesso numero**:
+non è un caso di quel giorno, è quanto l'ambiente della squadra sporca di
+default.
+
+---
+
+## ⚠️ LA TERZA VARIABILE: pulire l'ambiente NON basta se poi lo imposti tardi
+
+C'è una trappola che il passo 0 **non** chiude, e va detta qui perché non ha
+niente a che vedere con lo sporco ereditato:
+
+```
+RuntimeWarning: il log eventi scrive in <casa>/.verimem/events.jsonl mentre la
+data dir in uso è <altrove>: i fatti e la loro telemetria stanno in due posti
+diversi. Succede quando HIPPO_DATA_DIR è impostata DOPO l'import di verimem
+(EVENT_LOG_PATH si fissa all'import).
+```
+
+⇒ **Il percorso del log eventi si congela al momento dell'import.** Se scegli la
+cartella dei dati dopo — dentro uno script, in un test, in un notebook — i fatti
+finiscono in un posto e la loro telemetria in un altro, **e il prodotto te lo
+dice**: quel `RuntimeWarning` esiste apposta.
+
+🔑 **Due modi giusti, nessun terzo**: imposta la cartella dei dati **prima**
+dell'import, oppure dichiara esplicitamente `ENGRAM_EVENT_LOG` se la vuoi
+davvero altrove. ⚠️ E **isolare la cartella dei dati non isola il log**: è la
+stessa trappola vista dall'altro lato, ed è stata misurata due volte.
 
 ---
 

@@ -68,15 +68,20 @@ ma sposta il costo sul primo `remember` con fonte.
 verimem doctor
 ```
 
-⚠️ ✅ **Esce `1` anche quando il riscaldamento è riuscito** (misurato sul
-pacchetto 0.7.6, 06/09). **Non è un tuo errore e non è un fallimento del
-percorso**: è un difetto noto dell'exit code, che non discrimina fra «manca
-qualcosa di grave» e «manca qualcosa di opzionale».
+✅ **AGGIORNATO 13/09, e la riga di prima era vecchia: adesso esce `0`.** Sul
+wheel costruito da `main` in un venv pulito il `doctor` **esce 0** — non più 1
+come sul pacchetto 0.7.6 del 06/09. Se leggi ancora un `1`, non stai sullo
+stesso albero: dillo, non aggiustare la pagina.
 
-❓ **Incolla le righe che il doctor stampa sul giudice e sulle soglie.** Servono:
-la pagina che dichiara le soglie ne nomina **due costanti** (40 e 80), mentre un
-modello calibrato ne porta **una terza** — il 12/09 in CI valeva `99.64`. Sapere
-quale delle tre ti dichiara il doctor è il dato che manca a tutti.
+✅ **E LA DOMANDA CHE QUESTA PAGINA AVEVA LASCIATO APERTA HA RISPOSTA.** Chiedeva
+quale soglia il doctor dichiari a un utente nuovo, perché ne girano tre — due
+costanti (40 e 80) e una terza che il modello calibrato porta con sé (`99.64`).
+
+> **Il doctor dichiara `40/100`.**
+
+⇒ È **quella che il cancello applica davvero**: la terza viene scartata come
+artefatto di calibrazione. La superficie e il comportamento dicono la stessa
+cosa, ed è la risposta che mancava a tutti.
 
 ## 4 · Il quickstart
 
@@ -97,12 +102,24 @@ se a mancare è l'intero store. Un `0 risultati` non è una prova: lo `status` s
 
 ## 5 · La scrittura tua
 
+🔴 **QUESTA PAGINA PRESCRIVEVA UN COMANDO CHE CADE, ed è un P0 del prodotto.**
+Su uno store **nuovo** — cioè la situazione di chiunque segua questa pagina —
+`--lineage-to auto` **esce 1**. Controprova nella stessa esecuzione: **senza il
+flag, EXIT=0**. Un percorso «da zero» non può prescrivere un flag che funziona
+solo se hai già scritto qualcosa.
+
 ```bash
+# la prima scrittura su uno store NUOVO: senza --lineage-to
 verimem save "<una frase su un fatto tuo>" \
-  --topic <un/tuo/argomento> --lineage-to auto \
+  --topic <un/tuo/argomento> \
   --source "<il testo che sostiene quella frase>"
 verimem recall "<qualche parola di quella frase>"
 ```
+
+📌 `--lineage-to auto` resta giusto **dalla seconda scrittura in poi**, quando
+c'è un fatto a cui agganciarsi. ❓ Chi esegue dica se l'exit 1 arriva con un
+messaggio che spiega *perché*: se è muto, il difetto è doppio — cade e non dice
+come uscirne.
 
 ✅ **La ricevuta quando la fonte sostiene la frase** (forma vista più volte):
 

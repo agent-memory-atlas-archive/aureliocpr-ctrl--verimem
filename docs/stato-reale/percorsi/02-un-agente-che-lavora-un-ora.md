@@ -60,14 +60,35 @@ percorso, la scrittura sì.
 
 ### 3 · Il mondo cambia — l'agente **corregge**
 
-```bash
-verimem correct "<il fatto nuovo>" --source "<ciò che sostiene il cambiamento>"
+🔴 **LA RIGA CHE QUESTA PAGINA AVEVA SCRITTO NON FUNZIONA**, ed è una caduta
+della **pagina**, non del prodotto — trovata eseguendola:
+
+```
+verimem correct "<il fatto nuovo>" --source "..."
+  EXIT=2
+  Usage: verimem correct [OPTIONS] {old_id} {text}
+  Error: Missing argument 'text'.
 ```
 
-📖 La correzione passa dal giudice come una scrittura qualunque: non è un
-sovrascrivere, è una scrittura che dichiara di rettificare.
-❓ **Incolla la ricevuta**: serve sapere se dichiara la relazione col fatto
-vecchio o solo l'ammissione del nuovo.
+⇒ `correct` vuole **DUE argomenti posizionali**: l'id del fatto vecchio **e** il
+testo nuovo. Chi seguiva questa pagina alla lettera si fermava qui.
+
+```bash
+verimem correct <id_del_fatto_vecchio> "<il fatto nuovo>" \
+  --source "<ciò che sostiene il cambiamento>"
+```
+
+✅ **Ricevuta attesa, misurata con la forma vera** (EXIT=0):
+
+```
+superseded 98893a394f53 -> 97cf616e9fc6 topic=<il tuo argomento>
+branch='same-source evolution' reversible=True undo_op_id=<16 hex>
+```
+
+🔑 La ricevuta **dichiara la relazione**, non solo l'ammissione: dice quale
+fatto ha superato quale, che il ramo è un'evoluzione sulla stessa fonte, e che
+l'operazione è **reversibile** con un id per disfarla. Era la ❓ di questa
+pagina, e la risposta è migliore di quanto chiedesse.
 
 ### 4 · Richiama di nuovo
 
