@@ -6,10 +6,16 @@
   quando la prova che serviva non c'era più.
 
   ```
-  push dopo un commit fallito   il ramo pubblicato non conteneva il lavoro
-  write prima del parse AST     un file del pacchetto rotto in un albero condiviso
+  push dopo un commit fallito    il ramo pubblicato non conteneva il lavoro
+  write prima del parse AST      un file del pacchetto rotto in un albero condiviso
   store cancellato a fine banco  la misura non riproducibile non aveva più prove
+  rm di un file «mio»            era tracciato sul ramo, cancellato davvero
   ```
+
+  La quarta è arrivata dopo che le prime tre erano già scritte qui, ed è la più
+  istruttiva proprio per quello: un file estratto da un altro ramo per usarlo un
+  minuto sembrava una copia di lavoro, e `git status` — consultato *dopo* la
+  rimozione — l'ha mostrato come ` D` di un file tracciato.
 
 * **Classe** — **l'ordine fra effetto e verifica**, non tre errori distinti. In
   tutti e tre i casi la verifica esisteva ed era corretta: contare le righe del
@@ -31,7 +37,10 @@
      viene toccato se il parse fallisce (il rifiuto stampa il nome e la riga);
   3. **uno store di banco non si cancella finché il pari non l'ha letto** —
      scritto nel docstring di `scripts/stato_della_misura.py`, dove lo legge chi
-     sta per eseguire un banco.
+     sta per eseguire un banco;
+  4. **`git status` sul percorso PRIMA di rimuoverlo**, non dopo: un file
+     comparso nell'albero per una copia temporanea non è per forza non
+     tracciato, e la differenza si legge in un comando.
 
 * **Quello che resta aperto** — i tre controlli sono *pratiche*, non cricchetti:
   nessuno di loro è un test che diventa rosso se qualcuno torna alla forma
