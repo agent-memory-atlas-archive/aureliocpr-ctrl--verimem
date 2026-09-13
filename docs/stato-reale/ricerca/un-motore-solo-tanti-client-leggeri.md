@@ -304,21 +304,62 @@ di secondi **nel momento in cui il sistema è già in difficoltà**. Il ripiego 
 due volte il caricamento — e la ricevuta della seconda deve dire *motore*. Se il numero non
 cambia, la fetta non è stata consegnata, per quanto bello sia il disegno.
 
-### 8.5 Le domande ancora aperte — **scritte, non riempite**
+### 8.5 Il ciclo di vita — due domande hanno già una risposta, e non è un'opinione
 
-*Le lascio come domande perché non sono mie: chi le decide metta la risposta qui sotto col
-proprio nome, invece di farmela indovinare.*
+*Le avevo lasciate aperte. Chi tiene il servizio le ha chiuse la sera stessa, una leggendo il
+codice e una misurando il registro degli eventi. Le riporto con i suoi numeri.*
 
-1. **Chi accende il motore?** Il primo client che ne ha bisogno, o un avvio esplicito? Il primo è
-   comodo per l'utente e costringe ogni porta a saper avviare un processo staccato.
-2. **Come muore?** Il conteggio dei client è a **battito** (chi muore male smette di battere) o a
-   **registrazione** (chi muore male resta contato per sempre)? E **quanti minuti** di inattività
-   prima dello spegnimento — è la leva che decide se l'utente ripaga il caricamento.
-3. **Stretta di mano**: se versione o dimensione non combaciano, si **rifiuta** (sicuro, ma un
-   client vecchio resta a terra) o si **serve dichiarando** il disallineamento? Sono due prodotti
-   diversi, non due implementazioni.
+**❶ Chi accende il motore: già deciso dal codice di oggi, non da questa pagina.**
 
-### 8.6 Quello che NON si riprogetta
+    encode_service.py:882   ensure_running()  ->  if daemon_usable(): return True
+                                              ...  _spawn_detached()  con lucchetto e raffreddamento
+
+⇒ **Il primo client che ne ha bisogno** — e il costo che temevo non esiste: **le porte non
+avviano niente**, chiamano `ensure_running()`. «Saper avviare un processo staccato» è scritto
+**una volta sola**. E l'avvio esplicito, per chi lo vuole, **c'è già**: `verimem warmup`.
+
+**❷ Come muore: a BATTITO, non a registrazione — e la prova è un incidente, non un'idea.**
+La notte del 13/09 si sono trovati **due servizi vivi e ORFANI**, e il modulo che li governa lo
+dichiara per disegno: *«i demoni staccati non hanno un genitore vivo»*. Con la **registrazione**
+quei due sarebbero contati per sempre: su una macchina dove i processi muoiono male **è la
+norma**, un conteggio che non dimentica è un conteggio sbagliato.
+
+**E i minuti non si scelgono a occhio: si leggono.** Dal registro degli eventi, **3035 scritture
+in 7,2 giorni**, intervallo fra due scritture consecutive:
+
+    mediana 0,00 min · p90 0,21 · p95 0,97 · p99 11,42 · massimo 47,66 ORE
+
+    timeout      scritture che trovano il motore FREDDO
+      1 min       147 su 3034   (4,85%)
+      5 min        53           (1,75%)
+     15 min        24           (0,79%)
+     30 min        15           (0,49%)
+     60 min        10           (0,33%)
+    480 min (oggi)  7           (0,23%)
+
+⇒ **Le scritture arrivano a grappoli** (mediana zero). Passare da otto ore a **quindici minuti**
+costa **17 caricamenti freddi in più su 3034** — mezzo punto percentuale, ~8 minuti e mezzo di
+attesa **in una settimana** — e libera **~2,4 GB** per tutte le ore in cui nessuno scrive.
+
+⚠️ **Limite dichiarato, e non è formale**: quel registro viene da una macchina con otto
+lavoratori in parallelo. **Un utente solo ha buchi più lunghi, quindi per lui un timeout corto
+costa di più, non di meno.** Il numero va rifatto su un registro d'utente prima di diventare un
+default.
+
+🔑 **E qui le due domande si saldano in una sola**: nel 2026-06 un timeout di 30 minuti causò un
+incidente — *«il servizio moriva a metà sessione e la scrittura dopo caricava in proprio»* — e per
+quello oggi è a otto ore. **Ma il danno lo fece il ripiego in proprio, non la morte del
+servizio.** ⇒ **Timeout e ripiego sono UNA decisione, non due**: un timeout corto è sicuro solo
+se il ripiego è dichiarato e a buon mercato; se il ripiego carica il modello nel processo che
+scrive, accorciare il timeout **trasforma la RAM risparmiata in attese davanti all'utente**.
+
+### 8.6 La domanda ancora aperta — **scritta, non riempita**
+
+**Stretta di mano**: se versione o dimensione non combaciano, si **rifiuta** (sicuro, ma un client
+vecchio resta a terra) o si **serve dichiarando** il disallineamento? Sono due prodotti diversi,
+non due implementazioni. *Chi decide scriva qui la risposta, invece di farmela indovinare.*
+
+### 8.7 Quello che NON si riprogetta
 
 La **scoperta** del servizio è già nel prodotto e verificata da chi tiene la piattaforma: «non
 avviare se uno ascolta già», il file morto che viene sostituito, il servizio nuovo che lo
