@@ -300,9 +300,41 @@ di secondi **nel momento in cui il sistema è già in difficoltà**. Il ripiego 
       dopo     la paga UNA volta il motore, e la scrittura torna in pochi secondi
       e sulla ricevuta compare CHI ha giudicato: il motore, oppure il ripiego con il suo layer
 
-**Il presidio minimo, e uno solo**: la stessa scrittura fatta due volte di fila non deve pagare
-due volte il caricamento — e la ricevuta della seconda deve dire *motore*. Se il numero non
-cambia, la fetta non è stata consegnata, per quanto bello sia il disegno.
+⚠️ **CORREZIONE DEL 13/09 SERA — il criterio che questa sezione aveva scritto NON POTEVA
+FALSIFICARE NIENTE, e a dimostrarlo è stata una misura di chi tiene il moat.** La versione
+precedente diceva: *«la stessa scrittura due volte di fila non deve pagare due volte il
+caricamento»*. **Quel numero cala già oggi, da solo**, a codice invariato — tre scritture
+consecutive dalla riga di comando su uno store nuovo e isolato:
+
+    ① store VUOTO            totale 39,06 s     caricamento del moat  29 583,7 ms   (75,7%)
+    ② stesso store           totale 48,19 s     caricamento del moat   2 165,1 ms    (4,5%)
+
+⇒ **Tredici volte meno alla seconda scrittura, e non l'abbiamo fatto noi: è la cache di pagina
+del sistema operativo.** Un presidio scritto su quel numero **passa comunque**, cura o non cura.
+Era un verde vacuo con la mia firma sopra.
+
+🔑 **E la misura dice una seconda cosa più grave del criterio sbagliato**: mentre il caricamento
+misurato scende di tredici volte, **il totale dell'utente non scende — resta ~45 s**. Perché alla
+seconda scrittura si sveglia **un secondo modello** (il giudice delle relazioni, che serve quando
+lo store non è più vuoto), e **nessun evento lo nomina**: l'unico cronometro dichiara
+`what=moat-judge`, e l'altro caricamento avviene **fuori dalle sue parentesi** — 7,37 s fra i due
+file di pesi, visti con una spia sui file aperti.
+
+> **La telemetria racconta un pezzo; l'utente aspetta l'oggetto.** È la forma che paghiamo più
+> spesso — *il righello descrive un pezzo, non la cosa* — e stavolta era nel criterio di questa
+> pagina.
+
+**IL PRESIDIO CORRETTO, e uno solo:**
+
+    si cronometra IL COMANDO DELL'UTENTE, dall'invio alla ricevuta — non un evento interno
+    sulla SECONDA scrittura consecutiva, su store NON vuoto
+    riferimento di oggi, misurato prima della cura:   48,19 s
+    la fetta è consegnata se quel numero scende, e la ricevuta dice «motore»
+
+⇒ **Se il totale resta 45 secondi, la fetta non è stata consegnata** — anche se ogni evento
+interno dice che il moat non carica più. E siccome alla seconda scrittura il costo è **il secondo
+modello**, la prima fetta deve o servirlo dal motore anch'esso, o **dichiarare per iscritto che
+l'attesa dell'utente non cambierà ancora**, invece di lasciarlo scoprire a chi usa il prodotto.
 
 ### 8.5 Il ciclo di vita — due domande hanno già una risposta, e non è un'opinione
 
