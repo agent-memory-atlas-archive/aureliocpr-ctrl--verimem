@@ -35,6 +35,7 @@ ws7 «Iris», 10/09/2026. Misurato con:
 from __future__ import annotations
 
 import json
+import pathlib
 
 import pytest
 
@@ -85,46 +86,97 @@ async def test_CONTROLLO_la_porta_risponde_e_la_ricevuta_ha_un_corpo(tmp_data_di
 # ── LA PROMESSA: «Read that field» ──────────────────────────────────────────
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "APERTO — ws7, 10/09, E LA RIGA È MIA. README:352 insegna all'utente a "
-        "leggere `layers` nella ricevuta di `hippo_remember`, e quella porta NON "
-        "rende quel campo. Misurato invocando il tool: le chiavi sono "
-        "['adjudication', 'anti_confab_warnings', 'confidence', 'deferred', "
-        "'gate_knobs_denied', 'grounding_score', 'id', 'judged', 'moat', 'ok', "
-        "'proposition', 'replaced', 'source_signature', 'status', 'topic', "
-        "'verified_by'] — c'è `judged`, c'è `adjudication`, `layers` no.\n"
-        "PER L'UTENTE: chi segue il README cerca un campo che non arriva, e "
-        "resta con `stored: true` senza sapere se il fatto è stato giudicato — "
-        "che è esattamente ciò che quella riga dice di NON fare.\n"
-        "LA CURA È MIA e va sul README, non sul prodotto: `judged` è il campo "
-        "giusto e c'è già. Ma prima serve la misura nella condizione che la riga "
-        "descrive — daemon assente — che qui NON ho riprodotto: in questo test "
-        "il giudice gira (adjudication.judge.model = local_gate_ce_v2). Si lega "
-        "a T26a/a di ws5. Riscrivo la riga quando ho quel dato, non prima: una "
-        "riga di documentazione corretta a occhio è come è nato questo difetto.\n"
-        "`strict=True`: il giorno che `layers` torna alla porta, questo passa e "
-        "obbliga a togliere l'xfail."
-    ),
-)
-@pytest.mark.asyncio
-async def test_la_ricevuta_porta_il_campo_che_il_readme_insegna_a_leggere(tmp_data_dir):
-    """README:352 — «the receipt carries `layers: [...]`. **Read that field.**»
+#: I nomi che README:352 insegna a LEGGERE nella ricevuta di `hippo_remember`,
+#: presi dalla riga stessa: «`stored: true`, and the receipt carries
+#: `layers: ['L4-skipped']`. **Read that field.** `admitted` on its own does not
+#: mean judged.»
+#:
+#: ⚠️ `hippo_remember` sta nella stessa riga fra backtick ma e' il NOME DELLA
+#: PORTA, non un campo della ricevuta: sta fuori di proposito.
+NOMI_CHE_LA_RIGA_INSEGNA = frozenset({"stored", CAMPO, "admitted"})
 
-    Un utente che segue il README cerca `layers` nella ricevuta di
-    `hippo_remember`. Se non c'è, non ha modo di sapere se la sua scrittura è
-    stata giudicata: `stored: true` da solo non lo dice, e il README stesso
-    avverte che «`admitted` on its own does not mean judged».
+#: Il README letto dalla radice del repo: serve al controllo positivo in fondo.
+_README = pathlib.Path(__file__).resolve().parents[1] / "README.md"
+
+#: Quelli che la ricevuta NON rende come chiave di primo livello, misurati il
+#: 13/09/2026 invocando la porta (le 16 chiavi vere sono nel messaggio d'errore
+#: qui sotto, non in un ricordo).
+#:
+#: 🔴 SONO TUTTI E TRE — e il difetto registrato il 10/09 ne contava UNO.
+#: Cercavo `layers` perche' era il campo che la riga dice di leggere, e non ho
+#: guardato gli altri due che la STESSA riga nomina. `admitted` esiste, ma come
+#: VALORE dentro `adjudication.disposition`, non come campo: un utente che
+#: segue la riga cerca tre nomi e non ne trova nessuno.
+NON_RESI_IL_13_09 = frozenset({"stored", "layers", "admitted"})
+
+
+@pytest.mark.asyncio
+async def test_quali_nomi_della_riga_la_ricevuta_non_rende(tmp_data_dir):
+    """🔴 Il difetto e' APERTO e questo test lo REGISTRA. Cade nei DUE versi.
+
+    ⚙️ ERA UN `xfail(strict=True)` su `layers` solo. Convertito il 13/09 alla
+    forma decisa il 12/09 — «un test misura e resta, o si toglie con la ragione»
+    — e nel convertirlo il difetto si e' rivelato TRE VOLTE piu' grande: un
+    `xfail` chiede «il campo c'e'?» e si accontenta del no; un cricchetto chiede
+    «quali mancano?» e deve elencarli, e l'elenco ha fatto la differenza.
+
+    🟢 Se l'insieme si ACCORCIA, un nome e' arrivato alla porta: togli quel nome
+       da `NON_RESI_IL_13_09` nello stesso commit; a zero, questo presidio
+       diventa positivo e il docstring perde il paragrafo del difetto.
+    🔴 Se si ALLUNGA, la ricevuta ha perso un campo che la pagina promette.
+
+    PER L'UTENTE: chi segue README:352 cerca tre nomi nella ricevuta e non ne
+    trova nessuno, quindi non ha modo di sapere se la scrittura e' stata
+    giudicata — che e' esattamente cio' che quella riga dice di NON fare.
+
+    LA CURA E' SUL README, non sul prodotto: `judged` e' il campo giusto e c'e'
+    gia' (lo presidia il test qui sotto). Ma la riga non si riscrive a occhio:
+    serve la misura nella condizione che descrive — daemon assente — che qui NON
+    e' riprodotta (in questo test il giudice gira:
+    `adjudication.judge.model = local_gate_ce_v2`). Una riga di documentazione
+    corretta a occhio e' come e' nato questo difetto.
     """
     ricevuta = await _ricevuta_di_una_scrittura_con_fonte()
-    assert CAMPO in ricevuta, (
-        f"README:352 insegna a LEGGERE il campo `{CAMPO}` nella ricevuta di "
-        f"`hippo_remember`, e la ricevuta non ce l'ha. Chiavi presenti: "
-        f"{sorted(ricevuta)}.\n"
-        "Per l'utente: non ha modo di sapere se la scrittura è stata giudicata. "
-        "O il campo torna alla porta, o quella riga del README va riscritta con "
-        "il nome del campo che c'è davvero."
+
+    # Controllo positivo: se la ricevuta tornasse vuota, ogni «manca» sarebbe
+    # vero per la ragione sbagliata e questo test misurerebbe il nulla.
+    assert ricevuta, "la porta non ha reso nessuna ricevuta: il presidio non misura"
+
+    non_resi = frozenset(n for n in NOMI_CHE_LA_RIGA_INSEGNA if n not in ricevuta)
+    assert non_resi == NON_RESI_IL_13_09, (
+        "i nomi che README:352 insegna a leggere e che la ricevuta non rende "
+        "sono cambiati.\n"
+        f"  oggi     : {sorted(non_resi)}\n"
+        f"  il 13/09 : {sorted(NON_RESI_IL_13_09)}\n"
+        f"  arrivati : {sorted(NON_RESI_IL_13_09 - non_resi)}\n"
+        f"  persi    : {sorted(non_resi - NON_RESI_IL_13_09)}\n"
+        f"  chiavi rese dalla porta: {sorted(ricevuta)}\n"
+        "**Guarda la riga e la porta, non aggiornare l'elenco.**"
+    )
+
+
+def test_CONTROLLO_la_riga_del_readme_insegna_ANCORA_quei_tre_nomi():
+    """Il presidio sopra confronta con una riga che potrebbe essere riscritta.
+
+    Se il README cambia quella riga, l'elenco qui sopra smette di descrivere una
+    promessa viva e il suo rosso non vorrebbe piu' dire niente. Questo lo dice
+    invece di lasciarlo passare — ed e' la meta' che un `xfail` non poteva avere,
+    perche' l'`xfail` guardava la porta e mai la pagina.
+    """
+    testo = _README.read_text(encoding="utf-8", errors="replace")
+    i = testo.find("Read that field")
+    assert i > 0, (
+        "README:352 non contiene piu' «Read that field»: la riga presidiata e' "
+        "stata riscritta o tolta. Se e' stata CURATA, riscrivi questo presidio; "
+        "se e' stata solo spostata, aggiorna il frammento."
+    )
+    riga = testo[max(0, i - 700) : i + 120]
+    mancanti = sorted(n for n in NOMI_CHE_LA_RIGA_INSEGNA if f"`{n}" not in riga)
+    assert not mancanti, (
+        f"la riga non nomina piu' {mancanti}: insegnava tre campi il 13/09 e "
+        "l'elenco qui sopra e' misurato su quei tre. Se la riga e' stata "
+        "riscritta con i nomi giusti, il difetto e' curato e i due presidi qui "
+        "vanno girati insieme."
     )
 
 
