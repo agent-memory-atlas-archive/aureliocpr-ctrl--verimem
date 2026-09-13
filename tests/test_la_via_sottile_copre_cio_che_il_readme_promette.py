@@ -105,9 +105,11 @@ _NON_E_IL_CORPUS_DEI_FATTI = re.compile(r"\b(?:episode|episodes|skill|skills|dre
 
 #: APERTI E NOTI: un difetto gia' registrato non deve rendere CIECO il cricchetto
 #: su tutti gli altri. Sta qui, con il suo ticket, ed e' sorvegliato dal test in
-#: fondo con `xfail(strict=True)`: quando la cura arriva, quello passa e obbliga a
-#: togliere sia l'xfail sia questa riga. Un elenco che cresce senza ticket sarebbe
-#: il modo elegante di spegnere il presidio.
+#: fondo (`test_ogni_aperto_noto_e_ANCORA_scoperto`), che cade nei DUE versi:
+#: quando la cura arriva quel nome risulta coperto e il test obbliga a togliere
+#: questa riga, e se qualcuno aggiunge qui un nome gia' coperto — il modo
+#: elegante di spegnere il presidio — cade lo stesso. Un elenco che cresce senza
+#: ticket non e' un debito dichiarato, e' un presidio spento.
 APERTI_NOTI = {
     # ws7, 10/09: muta i fatti e non e' in _THIN_UNSUPPORTED_WRITES.
     # Stessa famiglia di T58. Owner della porta: ws2.
@@ -255,30 +257,55 @@ def test_CONTROLLO_il_riconoscitore_separa_chi_MUTA_da_chi_no(nome, descrizione,
     )
 
 
-# ── IL REPERTO CHE IL CRICCHETTO HA ISOLATO ─────────────────────────────────
+# ── IL REPERTO, REGISTRATO — e il guardiano di `APERTI_NOTI` ────────────────
+#
+# ⚙️ ERA UN `xfail(strict=True)` e sorvegliava UN nome. Convertito il 13/09 alla
+# forma decisa il 12/09 («un test misura e resta, o si toglie con la ragione»),
+# e nel convertirlo ha guadagnato portata: un `xfail` cade solo quando il difetto
+# e' CURATO, questo cade anche quando `APERTI_NOTI` si allunga per comodita'.
+#
+# LO STATO REGISTRATO, misurato il 13/09/2026 su `origin/main`:
+# `hippo_quarantine_restore` muta il corpus dei fatti («un-quarantine `fact_id`
+# back into live recall») e NON sta in `_THIN_UNSUPPORTED_WRITES`. Il dispatcher
+# (`mcp_server.py:7939`) rifiuta SOLO i nomi che stanno in una delle due liste,
+# quindi in thin mode prosegue, agisce sullo store LOCALE e rende
+# {ok, restored, fact_id}: l'utente crede di aver salvato un fatto ingiustamente
+# bloccato mentre nel corpus condiviso resta quarantenato. E' testualmente il
+# danno che il prodotto descrive tre righe piu' giu': «MUTATE the LOCAL store,
+# leaving the shared corpus untouched while reporting an outcome as if it had
+# changed». Stessa famiglia di T58 (`facts restore` abortito esce 0): un
+# ripristino che dichiara successo senza aver ripristinato. Due porte, una classe.
+#
+# La cura e' una riga in `_THIN_UNSUPPORTED_WRITES` e appartiene a chi possiede
+# la porta, non a chi l'ha trovata.
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "APERTO — ws7, 10/09. `hippo_quarantine_restore` muta il corpus dei fatti "
-        "(«un-quarantine `fact_id` back into live recall») e NON sta in "
-        "`_THIN_UNSUPPORTED_WRITES`. Il dispatcher (mcp_server.py:7939) rifiuta "
-        "SOLO i nomi che stanno in una delle due liste, quindi in thin mode questo "
-        "prosegue, agisce sullo store LOCALE e rende {ok, restored, fact_id}: "
-        "l'utente crede di aver salvato un fatto ingiustamente bloccato mentre nel "
-        "corpus condiviso resta quarantenato. E' testualmente il danno che il "
-        "prodotto descrive tre righe piu' giu': «MUTATE the LOCAL store, leaving "
-        "the shared corpus untouched while reporting an outcome as if it had "
-        "changed».\n"
-        "STESSA FAMIGLIA DI T58 (`facts restore` abortito esce 0): un ripristino "
-        "che dichiara successo senza aver ripristinato. Due porte, una classe.\n"
-        "NON lo curo qui: la cura e' una riga in `_THIN_UNSUPPORTED_WRITES` e "
-        "appartiene a chi possiede la porta (ws2 Giano, che ha gia' T49 e T58). "
-        "`strict=True`: il giorno che la riga c'e', questo passa e obbliga a "
-        "togliere l'xfail."
-    ),
-)
-def test_quarantine_restore_rifiuta_in_thin_mode():
-    """La riga che manca alla deny-list delle scritture."""
-    assert "hippo_quarantine_restore" in mcp_server._THIN_UNSUPPORTED_WRITES
+def test_ogni_aperto_noto_e_ANCORA_scoperto():
+    """🔴 Il difetto e' APERTO e questo test lo REGISTRA. Cade nei DUE versi.
+
+    🟢 Se uno di `APERTI_NOTI` e' stato CURATO, qui diventa rosso: la riga va
+       tolta dall'elenco nello stesso commit della cura, o il cricchetto sopra
+       continua a perdonare un nome che ormai e' a posto.
+    🔴 Se qualcuno AGGIUNGE a `APERTI_NOTI` un nome che in realta' e' gia'
+       coperto — il modo elegante di spegnere il presidio senza spegnerlo —
+       anche quello e' rosso qui, perche' quel nome non risulta scoperto.
+
+    E' la meta' che l'`xfail` non aveva: quello sorvegliava un nome solo, e
+    soltanto nella direzione della cura.
+    """
+    coperti = set(mcp_server._THIN_UNSUPPORTED_WRITES) | set(
+        mcp_server._THIN_UNSUPPORTED_READS
+    )
+    ancora_scoperti = {n for n in APERTI_NOTI if n not in coperti}
+
+    assert ancora_scoperti == APERTI_NOTI, (
+        "l'elenco degli aperti noti non descrive piu' lo stato del prodotto.\n"
+        f"  dichiarati aperti : {sorted(APERTI_NOTI)}\n"
+        f"  ancora scoperti   : {sorted(ancora_scoperti)}\n"
+        f"  gia' coperti      : {sorted(APERTI_NOTI - ancora_scoperti)}\n"
+        "🟢 Se un nome e' stato CURATO (ora e' in una delle due liste di rifiuto), "
+        "e' una buona notizia: togli la sua riga da `APERTI_NOTI` nello stesso "
+        "commit, cosi' il cricchetto sopra torna a sorvegliarlo.\n"
+        "🔴 Se un nome e' stato AGGIUNTO all'elenco pur essendo gia' coperto, "
+        "l'elenco sta spegnendo il presidio invece di dichiarare un debito."
+    )

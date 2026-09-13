@@ -214,30 +214,57 @@ README_PORTE_ELENCATE = {
 }
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "APERTO — ws7, 09/09. La tabella per porta del README (righe 745-751) si "
-        "presenta come completa: «What deletion looks like depends on which door "
-        "you use, so here it is per door», «Five doors delete». Ne elenca cinque, "
-        "e il server ne espone almeno due che non ci sono: `hippo_forget` (che "
-        "cancella un EPISODIO: «Delete one episode by id (privacy / GDPR)») e "
-        "`hippo_forget_with_report`. Il paragrafo dichiara di esistere proprio "
-        "per la cancellazione GDPR — «an agent memory is exactly where personal "
-        "data ends up» — quindi una porta non censita e' un buco nella promessa "
-        "che quel paragrafo fa. NON curo la tabella qui: aggiungere due righe "
-        "senza MISURARE dove resta il testo dopo quelle due porte metterebbe una "
-        "riga non misurata in una tabella che dichiara misure, che e' il difetto "
-        "denunciato. La cura e' la misura, e va fatta con l'owner della porta. "
-        "`strict=True`: il giorno che la tabella e' completa questo test PASSA e "
-        "il rosso strict obbliga a togliere l'xfail invece di lasciarlo marcire."
-    ),
-)
-def test_la_tabella_per_porta_del_readme_elenca_TUTTE_le_porte():
-    """README:743-751 — «here it is per door» dev'essere per OGNI porta."""
+#: LE PORTE CHE LA TABELLA NON CENSISCE, misurate il 13/09/2026 su `origin/main`
+#: con lo stesso criterio che questo file usa (`_tool_di_cancellazione()`).
+#:
+#: ⚠️ E' un INSIEME, non un conteggio: un numero dice «due» e lascia a chi legge
+#: il compito di scoprire QUALI. Il giorno che la tabella ne censisce una, questo
+#: test dice il nome di quella che resta.
+PORTE_NON_CENSITE_IL_13_09 = {
+    # Cancella un EPISODIO: «Delete one episode by id (privacy / GDPR)».
+    "hippo_forget",
+    "hippo_forget_with_report",
+}
+
+
+def test_le_porte_di_cancellazione_che_la_tabella_non_elenca_sono_ANCORA_quelle():
+    """🔴 Il difetto e' APERTO e questo test lo REGISTRA. Cade nei DUE versi.
+
+    ⚙️ ERA UN `xfail(strict=True)`. Convertito il 13/09 alla forma decisa il
+    12/09 — «un test misura e resta, o si toglie con la ragione» — perche' un
+    `xfail` cade solo quando il difetto e' CURATO: se domani il prodotto espone
+    una SESTA porta di cancellazione e la tabella resta ferma, l'`xfail`
+    continuava a passare e nessuno lo sapeva. E' il caso che conta davvero,
+    perche' la tabella invecchia da sola mentre il server cresce.
+
+    IL DIFETTO, testuale: la tabella per porta (README:743-751) si presenta come
+    completa — «What deletion looks like depends on which door you use, so here
+    it is per door», «Five doors delete» — e il server ne espone almeno due che
+    non ci sono. Il paragrafo dichiara di esistere proprio per la cancellazione
+    GDPR («an agent memory is exactly where personal data ends up»), quindi una
+    porta non censita e' un buco nella promessa che quel paragrafo fa.
+
+    NON curo la tabella qui: aggiungere due righe senza MISURARE dove resta il
+    testo dopo quelle due porte metterebbe una riga non misurata in una tabella
+    che dichiara misure — che e' esattamente il difetto denunciato. La cura e'
+    la misura, e va fatta con chi possiede la porta.
+    """
     esposte = {x.name for x in _tool_di_cancellazione()}
     non_censite = esposte - README_PORTE_ELENCATE
-    assert not non_censite, (
-        "porte di cancellazione che il prodotto espone e che la tabella del "
-        f"README non elenca: {sorted(non_censite)}"
+
+    assert non_censite == PORTE_NON_CENSITE_IL_13_09, (
+        "le porte di cancellazione che la tabella del README non elenca sono "
+        "cambiate.\n"
+        f"  oggi          : {sorted(non_censite)}\n"
+        f"  il 13/09      : {sorted(PORTE_NON_CENSITE_IL_13_09)}\n"
+        f"  censite da ora: {sorted(PORTE_NON_CENSITE_IL_13_09 - non_censite)}\n"
+        f"  nuove scoperte: {sorted(non_censite - PORTE_NON_CENSITE_IL_13_09)}\n"
+        "🟢 Se l'elenco si e' ACCORCIATO, la tabella ha guadagnato una riga: "
+        "togli quel nome da qui nello stesso commit, e quando arriva a zero "
+        "questo presidio torna `assert not non_censite` e il docstring perde il "
+        "paragrafo del difetto.\n"
+        "🔴 Se si e' ALLUNGATO, il prodotto ha una porta di cancellazione nuova "
+        "che la tabella non conosce — e quella tabella promette di essere per "
+        "OGNI porta, in un paragrafo che parla di dati personali.\n"
+        "**Guarda la tabella, non aggiornare l'elenco.**"
     )
