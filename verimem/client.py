@@ -971,9 +971,15 @@ class Memory:
         # for writes that earned admission on their own evidence.
         _graded_admit = any(str(w.get("layer", "")).endswith("-graded")
                             for w in warnings)
+        # ⚠️ Anche qui la prova di raggiungibilita' e' scesa dentro
+        # `applica_verdetto`, e per la stessa ragione: sulla porta gemella il
+        # termine sul campo faceva da interruttore a `get`, e toglierlo ha
+        # fatto chiamare `get` a ogni scrittura ammessa. Il difetto si e'
+        # visto li' perche' quel doppio non ha `get`; qui non si sarebbe
+        # visto, ed e' esattamente il motivo per cui la stessa correzione va
+        # fatta su tutte e due invece che dove il rosso e' uscito.
         if (_disposition == "admitted" and not _graded_admit
-                and not chronicle  # a hidden chronicle must not retire a curated fact
-                and self.semantic.get(fact.id) is not None):
+                and not chronicle):  # una cronaca nascosta non ritira un fatto curato
             # …e lo FA la superficie unica, non questo blocco: il ciclo era
             # scritto qui e, quasi uguale, nel server di strumenti, mentre la
             # riga di comando non lo aveva affatto. Estratto il 2026-09-12

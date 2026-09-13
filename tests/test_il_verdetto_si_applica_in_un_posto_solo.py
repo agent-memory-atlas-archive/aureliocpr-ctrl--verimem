@@ -13,6 +13,21 @@ impedisce alla quarta di nascere per conto suo — ed e' un difetto che il tempo
 produce da solo: una porta nuova si scrive guardandone una vecchia, e se la
 vecchia porta il ciclo dentro di se', la nuova lo ricopia.
 
+🔴 E QUESTO PRESIDIO HA CAUSATO UN ROSSO, il 13 settembre, e sta scritto qui
+perche' chi lo legge domani lo sappia. Per soddisfarlo ho tolto dal server di
+strumenti il termine `and getattr(_gate, "supersede_fact_ids", None)` di una
+condizione — sembrava ridondante, la funzione unica fa lo stesso controllo. Non
+era ridondante: faceva da INTERRUTTORE al termine successivo, `semantic.get(...)`,
+che senza niente da ritirare non veniva mai chiamato. Tolto quello, `get`
+partiva a ogni scrittura ammessa e quattro test sono diventati rossi sulla
+gamba macos, perche' il loro doppio del semantic ha `store` e `count` e non
+`get`.
+⇒ La lezione non e' «il presidio e' sbagliato»: e' che un presidio che vieta di
+NOMINARE qualcosa spinge a cancellare la riga invece di spostarla, e in una
+condizione l'ordine dei termini E' logica. La prova di raggiungibilita' ora sta
+dentro la funzione unica, dopo il controllo degli id: stesso ordine, un posto
+solo.
+
 ⚠️ E' un presidio TESTUALE, e il suo limite va detto: legge il sorgente, non il
 comportamento. Non si accorgerebbe di una porta che applica il verdetto in modo
 sbagliato — quella la prende `test_una_versione_non_e_un_ritiro.py`, che misura

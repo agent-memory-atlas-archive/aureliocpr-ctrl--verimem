@@ -13946,8 +13946,20 @@ async def _call_tool_impl(name: str, arguments: dict[str, Any]) -> list[t.TextCo
             # the curated store (store() can divert a non-quarantined write to telemetry
             # without a 'quarantined' status; retiring the old against a diverted new drops
             # both from curated recall — opus final critic).
-            if (not _deferred and getattr(fact, "status", "") != "quarantined"
-                    and a.semantic.get(fact.id) is not None):
+            # ⚠️ LA PROVA DI RAGGIUNGIBILITA' NON STA PIU' QUI, e toglierla da
+            # questa riga e' una CURA, non una semplificazione. Prima la
+            # condizione era «… and supersede_fact_ids and semantic.get(...)»:
+            # il primo termine faceva da INTERRUTTORE al secondo, e senza
+            # niente da ritirare `get` non veniva mai chiamato. Estraendo la
+            # funzione unica ho tolto il termine sul campo — il presidio che
+            # vieta di nominarlo qui mi ci ha portato — e `get` ha iniziato a
+            # essere chiamato a OGNI scrittura ammessa: quattro test rossi
+            # sulla gamba macos, perche' il loro doppio del semantic ha
+            # `store` e `count` e non `get`. La prova ora sta dentro
+            # `applica_verdetto`, DOPO il controllo degli id: stesso ordine di
+            # prima, un posto solo.
+            if (not _deferred
+                    and getattr(fact, "status", "") != "quarantined"):
                 # …dalla superficie unica, estratta il 2026-09-12: questo
                 # ciclo esisteva qui e, quasi uguale, nell'SDK — e la riga di
                 # comando non lo aveva affatto. Le guardie di ammissione
