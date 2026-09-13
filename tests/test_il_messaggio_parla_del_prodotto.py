@@ -439,3 +439,47 @@ def test_il_corpo_arriva_per_ENV_e_non_interpolato_nello_script() -> None:
     assert "github.event.pull_request.body" not in str(passo.get("run", "")), (
         "il corpo della richiesta e' INTERPOLATO dentro lo script: un corpo "
         "con $(...) esegue comandi sul runner. Passalo per `env`.")
+
+
+def test_il_modello_della_richiesta_passa_il_controllo_che_lo_accompagna() -> None:
+    """⚠️ IL MODELLO E IL CRITERIO NON POSSONO DIVERGERE.
+
+    Scritto il 13/09 dopo averlo misurato: il modello di allora, riempito come
+    lo riempirebbe chi apre una richiesta, produceva un corpo di **39 righe di
+    prosa** — cioe' il file che il repository propone violava il controllo che
+    il repository esegue. Nessuno dei due era sbagliato da solo: erano due
+    superfici che si erano mosse in tempi diversi.
+
+    Questa cella lega le due: se qualcuno allunga il modello o stringe il
+    criterio, diventa rossa qui invece che addosso al primo che apre una
+    richiesta.
+    """
+    import json
+    import subprocess
+
+    modello = (RADICE / ".github" / "PULL_REQUEST_TEMPLATE.md").read_text(encoding="utf-8")
+    # riempito come lo riempie un autore: le due righe al posto dei segnaposto,
+    # e i commenti del modello LASCIATI dove sono — che e' il caso peggiore e
+    # anche quello piu' comune.
+    corpo = modello.replace(
+        "\n\n\n",
+        "\nIl prodotto dichiara una cosa in piu' a chi lo usa.\n\n"
+        "Provato dal banco: resta rosso quando fallisce.\n", 1)
+
+    commenti = json.dumps(["### Definition of Done\n- [x] GREEN"])
+    (percorso := RADICE / "commenti_di_prova.json").write_text(commenti, encoding="utf-8")
+    corpo_file = RADICE / "corpo_di_prova.md"
+    corpo_file.write_text(corpo, encoding="utf-8")
+    try:
+        esito = subprocess.run(
+            [sys.executable, str(SCRIPT), "--corpo", str(corpo_file),
+             "--commenti", str(percorso)],
+            cwd=RADICE, capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=120)
+    finally:
+        corpo_file.unlink(missing_ok=True)
+        percorso.unlink(missing_ok=True)
+
+    assert esito.returncode == 0, (
+        "il modello che il repository propone non passa il controllo che il "
+        "repository esegue:\n" + esito.stdout + esito.stderr)

@@ -289,7 +289,19 @@ def _solo_prosa(testo: str) -> str:
     conterebbe i caratteri e troverebbe un testo che non ha mai scritto
     nessuno.
     """
-    return "\n".join(r for r in testo.replace("\r\n", "\n").splitlines()
+    # ⚠️ I COMMENTI DEL MODELLO NON SONO PROSA, e vanno tolti PRIMA di contare
+    # le righe: un blocco `<!-- … -->` sta su piu' righe, e un filtro riga per
+    # riga non lo vedrebbe. Provato il 13/09: il modello della richiesta, com'era
+    # scritto nel repository, produceva un corpo di 39 righe di prosa — cioe' il
+    # modello stesso non passava il controllo che accompagna.
+    # 📌 LIMITE DICHIARATO: non sappiamo se la piattaforma tolga questi commenti
+    # dal messaggio di fusione, perche' nel tronco non c'e' NESSUN commit nato
+    # dal corpo intero (`git log --grep '<!--'` -> 0, misurato). Se li porta,
+    # restano rumore nel log: per questo il modello e' anche CORTO — due difese
+    # invece di una scommessa.
+    senza_commenti = re.sub(r"<!--.*?-->", "", testo.replace("\r\n", "\n"),
+                            flags=re.DOTALL)
+    return "\n".join(r for r in senza_commenti.splitlines()
                      if not _NON_E_PROSA.match(r))
 
 
