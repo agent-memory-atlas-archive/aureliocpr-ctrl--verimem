@@ -14235,11 +14235,22 @@ async def _call_tool_impl(name: str, arguments: dict[str, Any]) -> list[t.TextCo
             # cioe' proprio dove la ricevuta si legge per capire perche' il
             # fatto non e' passato. Vedi il docstring di `judged_at_all`.
             _judged_out = _judged_at_all(_gs_out)
+            from .local_grounding import esecutore_dell_ultimo_giudizio
+            _chi_ha_giudicato_qui = esecutore_dell_ultimo_giudizio()
             return _ok({
                 "ok": True,
                 # Seconda chiave, e il posto e' la meta' della cura: la
                 # diagnosi c'era gia' piu' in basso e non si vedeva.
                 "judged": _judged_out,
+                # E CHI ha giudicato, con la stessa forma condizionale: il
+                # servizio condiviso o il modello caricato qui. Sta su questa
+                # porta e non solo sulla libreria perche' un campo che esiste
+                # da una parte e non dall'altra si legge come un'ASSENZA -
+                # e quella e' la classe che questo pomeriggio ci e' costata
+                # due volte (gli avvisi del gate hanno gia' due nomi a
+                # seconda della porta). La differenza va decisa, non ereditata.
+                **({"judged_by": _chi_ha_giudicato_qui}
+                   if _chi_ha_giudicato_qui else {}),
                 # E l'avviso in chiaro, condizionale come `quarantined_by`
                 # qui sotto: compare SOLO quando una fonte era stata data e
                 # non e' stata giudicata — il caso in cui chi scrive ha fatto
