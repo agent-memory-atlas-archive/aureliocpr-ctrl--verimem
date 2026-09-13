@@ -122,6 +122,40 @@ def test_senza_giudice_il_numero_inventato_passa_SENZA_essere_guardato(
         f"ramo, non perche' dipenda dal moat.")
 
 
+def test_CONTROLLO_senza_FONTE_non_cambia_niente(monkeypatch) -> None:
+    """🔴 IL CONFINE VERO DELLA CURA, e nel banco mancava (rilievo del pari).
+
+    `L4.1` confronta i numeri del claim con quelli della **fonte**. Se la cura
+    venisse scritta come «fai girare i controlli lessicali comunque» invece di
+    «falli girare ogni volta che c'e' una FONTE», una scrittura senza fonte
+    confronterebbe i suoi numeri con il nulla — e da lì **ogni numero risulta
+    assente**.
+
+    ⚠️ E non e' un timore teorico: dentro quella testa lessicale c'e' anche
+    `L4.1-ambiguo`, che guarda **solo la proposizione** (`numeri_ambigui`) e non
+    ha nessuna fonte da consultare. Su una scrittura senza fonte si
+    accenderebbe da sola.
+
+    ⇒ Sarebbe **l'unico modo in cui questa cura puo' fare un danno grosso**:
+    quarantinare in massa le scritture ordinarie che oggi entrano
+    legittimamente come non verificate. Questa cella lo rende impossibile, e
+    deve passare **prima e dopo** la cura.
+    """
+    monkeypatch.setenv("ENGRAM_GROUNDING_WRITE", "1")
+    _senza_giudice(monkeypatch)
+    res = run_validation_gate(
+        proposition=CLAIM_CON_NUMERO_INVENTATO, verified_by=None,
+        topic="t/porte", agent=None, validate="full", source=None,
+        grounding_llm=object())
+    strati = _strati(res)
+    assert not any(s.startswith("L4.1") for s in strati), (
+        f"una scrittura SENZA FONTE viene segnalata dai controlli lessicali "
+        f"(layer: {strati}): non c'e' nessuna fonte con cui confrontare i "
+        f"numeri, quindi «assente dalla fonte» non vuol dire niente. Una cura "
+        f"che accende quei controlli fuori dal ramo della fonte quarantina in "
+        f"massa le scritture ordinarie.")
+
+
 def test_CONTROLLO_senza_giudice_i_numeri_della_fonte_NON_si_segnalano(
         monkeypatch) -> None:
     """L'altra faccia: la cura non deve diventare «segnala sempre».
