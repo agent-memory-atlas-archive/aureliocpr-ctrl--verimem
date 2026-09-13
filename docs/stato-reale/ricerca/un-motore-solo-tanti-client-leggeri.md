@@ -216,6 +216,115 @@ nessuna delle tre strade**. Va fatta comunque, e per prima.
 **Quello che questa pagina non decide, e non deve**: quale strada prendere. Porta il quadro, i
 numeri con la loro fonte, e i rischi scritti prima — la scelta è di chi guida il prodotto.
 
+## 8. La decisione è presa — e da qui la pagina smette di confrontare e comincia a disegnare
+
+*Aggiunta del 13/09/2026 sera. Chi paga il prodotto ha scelto: **un motore solo**, legato
+all'apertura del programma e vivo finché serve. Questa sezione porta **l'API e il ciclo di
+vita**, e tiene separato ciò che è **deciso**, ciò che è **misurato** e ciò che è **aperto**.*
+
+### 8.1 Il protocollo: **verdetti**, non chiamate — e non è una preferenza
+
+La domanda che decide tutto il resto: il motore risponde a **chiamate** (dammi un embedding,
+dammi un punteggio) o a **verdetti** (ecco una scrittura, dimmi cosa ne è)?
+
+**Due misure indipendenti, arrivate da due persone diverse nella stessa sera, dicono verdetti:**
+
+    ① quante superfici PRODUCONO un verdetto        9
+       quante lo APPLICANO alla supersessione       2
+       e i due che lo applicano sono esattamente i due che DIVERGEVANO
+       (uno applicava la regola sull'ammissione degradata, l'altro no,
+        e chi non la applicava dichiarava di rispecchiare chi sì)
+
+    ② il cancello avrebbe bisogno dello store?
+       `run_validation_gate` prende 20 parametri
+       riferimenti allo store nel corpo:  UNO SOLO   (i fatti vicini, per L3)
+
+⇒ **A chiamate, la regola resta in nove posti**: non per distrazione, ma perché nove copie di
+una regola sono nove occasioni di aggiornarne otto. **A verdetti il motore risponde *ammesso /
+ammesso-degradato / fermato, e questi sono i layer*, e le porte non hanno più niente da
+decidere.**
+
+🔑 **E l'obiezione seria cade sulla misura ②**: si temeva che «verdetti» trascinasse lo **store**
+dentro il servizio. Non lo trascina: tutto il cancello è una funzione di *(claim, fonte,
+configurazione)* **tranne un layer**, che ha bisogno dei fatti vicini. Due vie, e la pagina
+sceglie la prima:
+
+    (a) la porta PASSA i vicini insieme al claim   -> il motore resta una FUNZIONE PURA:
+                                                      niente stato, niente DB da aprire,
+                                                      si prova senza store
+    (b) il motore legge lo store                   -> accoppiamento e ciclo di vita del DB,
+                                                      e la porta torna sottile solo in apparenza
+
+**Si falsifica così**: mostrando un layer, oltre a quello dei vicini, che ha bisogno dello store.
+Chi lo trova fa cadere (a).
+
+### 8.2 La forma della chiamata
+
+    -> RICHIESTA                          <- RISPOSTA
+       claim                                 esito: ammesso | ammesso-degradato | fermato
+       fonte (o niente)                      layer: [ ... ]     chi ha deciso, per nome
+       vicini (per il layer delle relazioni) punteggio + soglia + il nome della SCALA
+       configurazione dichiarata             chi ha giudicato: il motore, o il ripiego
+                                             supersede: gli id da ritirare
+
+📌 **`supersede` va nella risposta anche se oggi quasi nessuno la guarda** — ed è un reperto di
+questa sera: **sette punti su nove ignorano gli id da ritirare** che il verdetto già porta. Per
+due di quei sette è probabilmente giusto (promuovere un pezzo di documento non deve ritirare un
+fatto); per gli altri **nessuno lo sa**. Con il percorso unico quella risposta si dà **una
+volta**; a chiamate si dà nove volte, e oggi sette di quelle volte non l'ha data nessuno.
+
+### 8.3 Il ripiego c'è, e **deve parlare**
+
+Non si fa cadere la scrittura di un utente per un problema di infrastruttura: se il motore non
+risponde, la porta giudica in proprio. ⚠️ **Ma il ripiego muto è l'unica variante da escludere**,
+e il vocabolario per dirlo **esiste già nel prodotto** — non va inventato:
+
+    layer «L4-skipped»            «la fonte c'era ma il giudice stava ancora caricando:
+                                   entailment NON verificato per QUESTA scrittura»
+    layer «L4-grounding-graded»   ammette e lo dichiara, con un nome scelto apposta
+                                   perché l'escalation non scatti
+
+⇒ **Stessa forma qui**: se il giudizio non viene dal motore, la ricevuta porta un layer che lo
+dice. Chi legge sa sempre **da dove viene il verdetto che sta guardando**.
+
+⚠️ **E il costo del ripiego va detto**: caricare il modello in proprio significa ~1,3 GB e decine
+di secondi **nel momento in cui il sistema è già in difficoltà**. Il ripiego salva la scrittura e
+**annulla il risparmio**: è una scelta di prodotto, non un dettaglio, e va presa sapendolo.
+
+### 8.4 La prima fetta, e come si vede che ha funzionato
+
+**Il moat servito dal motore, con la ricevuta che dice da dove è venuto il giudizio.**
+
+    quello che l'utente vede cambiare, e che si misura in due comandi:
+      oggi     la prima scrittura con fonte da riga di comando paga il caricamento (decine di secondi)
+      dopo     la paga UNA volta il motore, e la scrittura torna in pochi secondi
+      e sulla ricevuta compare CHI ha giudicato: il motore, oppure il ripiego con il suo layer
+
+**Il presidio minimo, e uno solo**: la stessa scrittura fatta due volte di fila non deve pagare
+due volte il caricamento — e la ricevuta della seconda deve dire *motore*. Se il numero non
+cambia, la fetta non è stata consegnata, per quanto bello sia il disegno.
+
+### 8.5 Le domande ancora aperte — **scritte, non riempite**
+
+*Le lascio come domande perché non sono mie: chi le decide metta la risposta qui sotto col
+proprio nome, invece di farmela indovinare.*
+
+1. **Chi accende il motore?** Il primo client che ne ha bisogno, o un avvio esplicito? Il primo è
+   comodo per l'utente e costringe ogni porta a saper avviare un processo staccato.
+2. **Come muore?** Il conteggio dei client è a **battito** (chi muore male smette di battere) o a
+   **registrazione** (chi muore male resta contato per sempre)? E **quanti minuti** di inattività
+   prima dello spegnimento — è la leva che decide se l'utente ripaga il caricamento.
+3. **Stretta di mano**: se versione o dimensione non combaciano, si **rifiuta** (sicuro, ma un
+   client vecchio resta a terra) o si **serve dichiarando** il disallineamento? Sono due prodotti
+   diversi, non due implementazioni.
+
+### 8.6 Quello che NON si riprogetta
+
+La **scoperta** del servizio è già nel prodotto e verificata da chi tiene la piattaforma: «non
+avviare se uno ascolta già», il file morto che viene sostituito, il servizio nuovo che lo
+riscrive. ⇒ **Questa pagina la cita e ci costruisce sopra.** Ogni pezzo ri-derivato è tempo
+pagato due volte, e in questa casa è già successo.
+
 ---
 
 *Ogni affermazione ha accanto la sua fonte: un URL, una riga di codice, o il marchio **NON
