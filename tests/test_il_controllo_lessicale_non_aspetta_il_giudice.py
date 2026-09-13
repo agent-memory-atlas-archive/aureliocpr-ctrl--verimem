@@ -39,8 +39,32 @@ Senza la seconda, il rosso potrebbe essere un claim mal costruito invece di un
 buco. Senza la terza, una cura che accendesse `L4.1` a ogni scrittura
 passerebbe.
 
-⚠️ Nessuna delle tre carica un modello: il giudice è reso indisponibile
-esattamente come lo rende il prodotto quando non riesce a dare un punteggio.
+⚠️ Nessuna cella carica un modello: il giudice è reso indisponibile esattamente
+come lo rende il prodotto.
+
+LE TRE PORTE, E QUALE QUESTO BANCO COPRE
+-----------------------------------------
+`L4.1` non gira in **tre** situazioni diverse, non una — contate leggendo il
+ramo, e il banco lo dice invece di lasciarlo dedurre::
+
+    1  giudice configurato che NON dà un punteggio      COPERTA (2 celle)
+       (`if gscore is None`, il caso del riscaldamento)
+    2  NESSUN giudice configurato                        COPERTA (2 celle)
+       (`elif source and not _have_judge`, ramo diverso)
+    3  giudizio SPENTO ma giudice disponibile            🔴 NON COPERTA
+       (né il primo `if` né l'`elif`: non gira il controllo
+        e NON esce nemmeno l'avviso `L4-skipped`)
+
+🔴 **PERCHÉ LA TERZA È FUORI, e non è una svista.** Lì il giudizio è spento
+**per configurazione**: far girare un controllo che l'operatore ha chiesto di
+non avere è una decisione di prodotto, non la cura di questo difetto. E c'è di
+peggio — **quel ramo non dice nemmeno «non ho verificato»**: le prime due
+almeno lo dichiarano. È un secondo difetto, più grave di questo, e merita un
+ticket suo invece di essere assorbito qui in silenzio.
+
+📌 **Ogni porta coperta porta il suo controllo positivo.** Senza, una cura che
+accendesse i controlli dappertutto passerebbe su una porta e cadrebbe
+sull'altra — e il banco direbbe «metà».
 """
 from __future__ import annotations
 
@@ -81,6 +105,63 @@ def _senza_giudice(monkeypatch) -> None:
 def _con_giudice(monkeypatch, punteggio: float = 99.9) -> None:
     monkeypatch.setattr(gg, "fact_grounding_score_ex",
                         lambda *a, **k: (punteggio, "local"))
+
+
+def _nessun_giudice_configurato(monkeypatch) -> None:
+    """PORTA 2: nessun giudice, non uno che non sa rispondere.
+
+    `_have_judge` è vero se c'è un llm iniettato, o il backend è locale, o il
+    cross-encoder è sul disco, o il daemon si annuncia: si spengono tutte e
+    quattro, altrimenti il caso finisce nella porta 1 e questa cella
+    misurerebbe due volte la stessa cosa.
+    """
+    import verimem.local_grounding as lg
+    monkeypatch.setattr(gg, "_resolve_backend", lambda *a, **k: "claude")
+    monkeypatch.setattr(lg, "local_ce_available", lambda *a, **k: False)
+    monkeypatch.setattr(lg, "daemon_del_giudice_annunciato", lambda *a, **k: False)
+
+
+def _cancello_senza_llm(claim: str):
+    return run_validation_gate(
+        proposition=claim, verified_by=None, topic="t/porte", agent=None,
+        validate="full", source=FONTE, grounding_llm=None)
+
+
+def test_PORTA2_nessun_giudice_configurato_il_numero_inventato_viene_visto(
+        monkeypatch) -> None:
+    """La SECONDA porta: ramo diverso, stessa conseguenza.
+
+    Il rilievo del pari che ha allargato questo banco: la cura tocca due rami,
+    e prima **il banco ne misurava uno**. Curare una porta che non si misura è
+    il modo di scoprire in produzione che la si era curata male.
+    """
+    monkeypatch.setenv("ENGRAM_GROUNDING_WRITE", "1")
+    _nessun_giudice_configurato(monkeypatch)
+    strati = _strati(_cancello_senza_llm(CLAIM_CON_NUMERO_INVENTATO))
+
+    assert "L4-skipped" in strati, (
+        f"questa cella non sta misurando la porta 2 (layer: {strati}): se il "
+        f"giudice risulta disponibile il caso è finito nella porta 1 e il "
+        f"verdetto qui sotto non dice niente di nuovo")
+    assert any(s.startswith("L4.1") for s in strati), (
+        f"senza NESSUN giudice configurato il numero assente dalla fonte entra "
+        f"non guardato (layer: {strati}): la cura copre l'altro ramo e non "
+        f"questo")
+
+
+def test_CONTROLLO_PORTA2_i_numeri_della_fonte_NON_si_segnalano(
+        monkeypatch) -> None:
+    """Il controllo positivo della porta 2: non è «segnala sempre» nemmeno qui.
+
+    Ogni porta coperta porta il suo, altrimenti una cura che accende i
+    controlli su tutto passerebbe su una porta e cadrebbe sull'altra.
+    """
+    monkeypatch.setenv("ENGRAM_GROUNDING_WRITE", "1")
+    _nessun_giudice_configurato(monkeypatch)
+    strati = _strati(_cancello_senza_llm(CLAIM_SENZA_NUMERI_NUOVI))
+    assert not any(s.startswith("L4.1") for s in strati), (
+        f"sulla porta 2 un claim i cui numeri sono TUTTI nella fonte viene "
+        f"segnalato lo stesso (layer: {strati})")
 
 
 def test_CONTROLLO_col_giudice_il_numero_inventato_viene_visto(monkeypatch) -> None:
