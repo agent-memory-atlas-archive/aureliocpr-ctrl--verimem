@@ -14331,6 +14331,9 @@ async def _call_tool_impl(name: str, arguments: dict[str, Any]) -> list[t.TextCo
             _judged_out = _judged_at_all(_gs_out)
             from .local_grounding import esecutore_dell_ultimo_giudizio
             _chi_ha_giudicato_qui = esecutore_dell_ultimo_giudizio()
+            from ._compat import provenienza_data_dir as _prov_dd
+            _provenienza_store_mcp = _prov_dd()
+            _store_mcp = str(getattr(a.semantic, "db_path", "") or "")
             return _ok({
                 "ok": True,
                 # Seconda chiave, e il posto e' la meta' della cura: la
@@ -14378,6 +14381,22 @@ async def _call_tool_impl(name: str, arguments: dict[str, Any]) -> list[t.TextCo
                 "status": getattr(fact, "status", "model_claim"),
                 "verified_by": list(getattr(fact, "verified_by", [])),
                 "source_signature": getattr(fact, "source_signature", None),
+                # DOVE ha scritto e CHI l'ha deciso (T91) — e su QUESTA porta
+                # conta piu' che altrove: e' l'unica senza una console da
+                # leggere, quindi se la ricevuta tace il chiamante non ha
+                # nessun altro posto dove guardare. Il campo e' ripetuto qui e
+                # non ereditato da `client.py` per la ragione scritta dodici
+                # righe piu' sotto: questa lista e' esplicita, e un campo
+                # aggiunto alla libreria non arriverebbe mai fin qui.
+                # ⚠️ `getattr`: un doppio di test puo' non esporre `db_path`, e
+                # una RICEVUTA non deve mai far cadere una scrittura che e'
+                # gia' andata a buon fine. Misurato in CI: `AttributeError:
+                # '_FakeSemantic' object has no attribute 'db_path'` su 15
+                # celle, riprodotto in locale 10 failed / 9 passed. E' la
+                # seconda volta con lo stesso doppio (il 13/09 non aveva
+                # `get`): la porta MCP si prova con i SUOI file di test.
+                "store": _store_mcp,
+                "store_decided_by": _provenienza_store_mcp.deciso_da_per(_store_mcp),
                 # Cycle 138: surface anti-confab warnings so the caller
                 # (LLM or operator) sees what fired and can adjust the
                 # proposition / verified_by before retry.
