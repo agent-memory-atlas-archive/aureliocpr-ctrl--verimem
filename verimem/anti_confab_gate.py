@@ -255,8 +255,27 @@ def _is_advisory_layer(layer: str) -> bool:
     #: guardia (discorso riportato con disclaimer, smentita). Si vede nella
     #: ricevuta e NON decide: senza questa riga il ritiro tornerebbe a
     #: quarantinare cio' che oggi passa, che e' il contrario della cura.
+    #: T133 (19/09): `L1-skipped` e' un livello che NON HA GUARDATO. Non puo'
+    #: decidere per definizione, e senza questa riga il marcatore del salto
+    #: entrerebbe nel contatore dell'escalation (che guarda i layer `L1*`) e
+    #: farebbe trattenere proprio le note che la corsia cronaca esiste per far
+    #: passare — lo stesso difetto che #80 ha appena chiuso, rifatto da me.
+    #: ⚠️⚠️ NOME ESATTO, NON IL SUFFISSO, E IL PERCHE' E' UN REPERTO: la prima
+    #: versione scriveva `s.endswith("-skipped")` e ha fatto cadere le tre
+    #: gambe della CI su `test_blocking_layers_keeps_l4_skipped_advisory`
+    #: (`assert [] == ['L4-skipped']`). Il suffisso era GIA' IN USO con la
+    #: regola OPPOSTA: `L4-skipped` («nessun giudice disponibile») e' un avviso
+    #: che PUO' essere la ragione quando e' l'unica nota, ed e' per questo
+    #: l'ultima voce di `_BLOCK_LAYER_PRIORITY`. Convivono due nozioni di
+    #: «avviso» che non sono la stessa — questa convenzione dice «non puo' MAI
+    #: essere la ragione», `L4-skipped` dice «se non c'e' altro, sono io» — e
+    #: il suffisso le fondeva in una. Cercando chi legge quel nome avevo
+    #: trovato due confronti esatti (`client.py:456` e `:4307`) e mi ero
+    #: fermata: il terzo lettore non lo NOMINA in un confronto, lo TIENE in una
+    #: tabella che `_blocking_layers` filtra con questa funzione.
     return (s.endswith("-observe") or s.endswith("-graded")
-            or s.endswith("-withdrawn") or s == "L3-coexistence")
+            or s.endswith("-withdrawn")
+            or s in ("L3-coexistence", "L1-skipped"))
 
 
 def advisory_eligible(warnings: Iterable[dict] | None) -> bool:
@@ -2292,9 +2311,29 @@ def run_validation_gate(
     # detector da solo non puo' saperlo — vede la `source`, non chi l'ha
     # scritta — e la giuntura sta qui, al punto in cui la provenienza esiste.
     _provenienza = _gr_classify_provenance(writer_role, _vb_list)
-    warnings = ([] if narrative_l1_skip or not _l1_ha_giurisdizione
-                else _l1_warnings(proposition, _vb_list,
-                                 source=source, provenance=_provenienza))
+    #: T133 (19/09): UNO SCREEN SALTATO LO DICE. Misurato con due scritture e
+    #: una variabile sola: la stessa frase perde TRE livelli (`L1.10`, `L1.15`,
+    #: `L1.20`) quando e' una nota, e la ricevuta non porta un solo campo che lo
+    #: dica — per chi legge, uno screen saltato e uno che ha guardato senza
+    #: trovare niente sono identici.
+    #: ⚠️ DUE STRADE, DUE PERIMETRI, e non vanno confusi: qui si salta SOLO la
+    #: famiglia L1 (injection, L3 e L4 guardano davvero), mentre il corto
+    #: circuito dello scrittore fidato piu' su non fa girare niente. Dire «non
+    #: ho guardato L1» quando non hai guardato NIENTE e' una ricevuta che
+    #: rassicura, e sarebbe peggio del silenzio.
+    if narrative_l1_skip and _l1_ha_giurisdizione:
+        warnings = [{
+            "layer": "L1-skipped",
+            "stato": "saltato",
+            "ragione": "meta-narrative",
+            "perimetro": "famiglia L1",
+            "reason": "la corsia cronaca non fa girare la famiglia L1; "
+                      "injection, L3 e L4 hanno guardato",
+        }]
+    else:
+        warnings = ([] if narrative_l1_skip or not _l1_ha_giurisdizione
+                    else _l1_warnings(proposition, _vb_list,
+                                      source=source, provenance=_provenienza))
     verified_by = _vb_list
     contradicting_ids: list[str] = []
     supersede_ids: list[str] = []
