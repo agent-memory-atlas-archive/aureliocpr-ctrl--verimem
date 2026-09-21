@@ -2269,7 +2269,7 @@ def trust_stats_cmd(
         _head = "[bold]Gate actions (no writes recorded yet)[/bold]"
     console.print(_head)
     console.print(f"  admitted:    {led['admitted']}")
-    console.print(f"  quarantined: {led['quarantined']}  [dim]unsupported claims stored hidden[/dim]")
+    console.print(riga_dei_quarantinati(led["quarantined"]))
     console.print(f"  rejected:    {led['rejected']}  [dim]not stored at all[/dim]")
     console.print(f"  abstained:   {led['abstained']}  [dim]honest 'I don't know' on reads[/dim]")
     if s["by_layer"]:
@@ -5481,6 +5481,14 @@ def riga_stored_quarantined(r: dict) -> str:
         return (f"[yellow]stored QUARANTINED[/yellow] — held by "
                 f"{', '.join(agito)}; see warnings below")
     return "[yellow]stored QUARANTINED[/yellow] — see warnings below"
+def riga_dei_quarantinati(n: int) -> str:
+    """La riga del riepilogo che conta le scritture trattenute.
+
+    ESTRATTA per poterla misurare su un numero costruito: dipende solo dal
+    conteggio, e farla passare da uno store vero misurerebbe il corpus.
+    """
+    from .trust_ledger import etichetta_dei_quarantinati
+    return f"  quarantined: {n}  [dim]{etichetta_dei_quarantinati()}[/dim]"
 
 
 def riga_moat_non_verificato(moat: str | None) -> str:
