@@ -898,9 +898,15 @@ class Memory:
         _layers = _blocking_layers(warnings)
         if action == "reject":
             self._record_trust("rejected", layers=_layers, topic=topic)
+            # T181 — anche qui il perché, non solo il chi: un fatto RESPINTO
+            # non entra affatto, quindi il journal è l'unico posto dove quella
+            # scrittura lascia traccia. Senza la ragione resta un rifiuto senza
+            # motivo, che è la forma meno utile di rifiuto.
             _emit_write(stored=False, status="rejected", fact_id="",
                         topic=str(topic), layers=_layers,
-                        grounding_score=_gs_evt)
+                        grounding_score=_gs_evt,
+                        **({"quarantined_reason_excerpt": _r}
+                           if (_r := _reason_from_warnings(warnings)) else {}))
             _adj = _adjudication(gate, disposition="rejected",
                                  verified_by=verified_by, warnings=warnings)
             self._audit_record(_adj, topic=topic, proposition=text, fact_id=None,
@@ -1020,7 +1026,19 @@ class Memory:
             self._record_trust("admitted", layers=None, topic=topic)
         # layers in the flow event = which defense actually ACTED (same
         # attribution as the ledger): the Live Engine Room lights the real
-        # stage, not a generic box. Metadata only, never fact content.
+        # stage, not a generic box.
+        #
+        # ⚠️ QUESTA RIGA DICEVA «Metadata only, never fact content», e dal
+        # 2026-09-21 non è più vera alla lettera: quando una scrittura viene
+        # fermata l'evento porta anche `quarantined_reason_excerpt`, cioè il
+        # layer che ha agito più IL DETTAGLIO CONTESTATO — un numero, una
+        # parola, il frammento su cui il controllo è scattato. Serviva: senza,
+        # il journal diceva che un fatto era stato fermato e mai da che cosa.
+        #
+        # Quello che resta vero, ed è il confine: **la proposizione non entra**.
+        # Nel journal finisce la ragione del rifiuto, non il fatto rifiutato, e
+        # quella ragione è tagliata a `MAX_ESTRATTO` dal suffisso `_excerpt` —
+        # un campo di lunghezza limitata, non il testo che l'utente ha scritto.
         # `judged` accanto a `status`: senza, nel feed un fatto verificato
         # 99.9 e uno MAI GIUDICATO sono entrambi "ADMITTED" — cioè la
         # distinzione che questo prodotto vende sparisce proprio dalla
@@ -1039,10 +1057,28 @@ class Memory:
         # mai-giudicati ESISTONO (6 NULL su 250 scritti in un giorno, 4 dei
         # quali con una source_signature) e il feed non li distingueva.
         # La causa resta ignota, ed è meglio dirlo che spiegarla a caso.
+        # T181 — accanto a CHI ha fermato il fatto, anche PERCHÉ. L'evento
+        # portava `layers`, `grounding_score`, `judged` e
+        # `withheld_despite_judge`, e nessuna traccia del dettaglio contestato:
+        # chi apre il journal dopo non poteva sapere quale numero o quale
+        # parola avesse fermato la scrittura senza rieseguire il gate sullo
+        # stesso testo — possibile solo avendo ancora il claim E la fonte.
+        #
+        # La stringa NON è nuova: `_reason_from_warnings` è la stessa che
+        # compone la ricevuta, e sceglie il layer bloccante di priorità più
+        # alta escludendo gli advisory. Il suffisso `_excerpt` NON è cosmetico:
+        # è ciò che fa tagliare il valore a `MAX_ESTRATTO` dentro
+        # `observability.emit`, dove il tetto è scritto una volta sola «e non
+        # nei chiamanti». Un nome senza quel suffisso porterebbe nel journal
+        # stringhe di lunghezza arbitraria.
+        _ragione = (_reason_from_warnings(warnings)
+                    if fact.status == "quarantined" else "")
         _emit_write(stored=True, status=str(fact.status),
                     fact_id=str(fact.id), topic=str(topic),
                     layers=_hit_layers, grounding_score=_gs_evt,
-                    judge_backend=getattr(gate, "judge", None))
+                    judge_backend=getattr(gate, "judge", None),
+                    **({"quarantined_reason_excerpt": _ragione}
+                       if _ragione else {}))
         _disposition = ("quarantined" if fact.status == "quarantined"
                         else "admitted")
         # Same-source EVOLUTION supersession (ENGRAM_SUPERSEDE_SAME_SOURCE, classified by
